@@ -3,7 +3,7 @@ services:
     name: gravador-de-lives-nerd
     plan: free
     dockerfilePath: Dockerfile
-    schedule: "0 21 * * 5"
+    schedule: "0 0 * * 5,6,0"  # Sexta, Sábado e Domingo às 21h BRT (0h UTC)
     envGroups:
       - name: gravador-secrets
     secretFiles:

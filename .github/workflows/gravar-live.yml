@@ -52,17 +52,16 @@ jobs:
           echo "Criando arquivo de cookies do YouTube..."
           echo "${{ secrets.YOUTUBE_COOKIES }}" > "$HOME/yt-cookies.txt"
 
-      # 7. Envia uma notificação para o WhatsApp, se os secrets estiverem configurados
-      - name: 7. Enviar notificação para WhatsApp
-        # Esta etapa só executa se o workflow estiver a correr com sucesso e se os secrets da Twilio existirem
-        if: ${{ success() && secrets.TWILIO_ACCOUNT_SID != '' && secrets.WHATSAPP_API_KEY != '' }}
-        run: |
-          echo "Enviando notificação para o WhatsApp..."
-          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.TWILIO_ACCOUNT_SID }}/Messages.json" \
-            --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \
-            --data-urlencode "From=${{ secrets.WHATSAPP_SENDER_NUMBER }}" \
-            --data-urlencode "Body=Iniciando a gravação da live!" \
-            -u "${{ secrets.TWILIO_ACCOUNT_SID }}:${{ secrets.WHATSAPP_API_KEY }}"
+      # 7. Etapa de notificação do WhatsApp (Temporariamente desativada para diagnóstico)
+      # - name: 7. Enviar notificação para WhatsApp
+      #   if: ${{ success() && secrets.TWILIO_ACCOUNT_SID != '' && secrets.WHATSAPP_API_KEY != '' }}
+      #   run: |
+      #     echo "Enviando notificação para o WhatsApp..."
+      #     curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.TWILIO_ACCOUNT_SID }}/Messages.json" \
+      #       --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \
+      #       --data-urlencode "From=${{ secrets.WHATSAPP_SENDER_NUMBER }}" \
+      #       --data-urlencode "Body=Iniciando a gravação da live!" \
+      #       -u "${{ secrets.TWILIO_ACCOUNT_SID }}:${{ secrets.WHATSAPP_API_KEY }}"
 
       # 8. Executa o script principal de gravação
       - name: 8. Rodar script de gravação

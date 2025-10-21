@@ -8,4 +8,4 @@ services:
       - name: gravador-secrets
     secretFiles:
       - key: drive_config
-        path: /rclone-secrets/drive_config # <--- O ERRO ESTAVA AQUI
+        path: /rclone-secrets/drive_config

@@ -1,70 +1,9 @@
-# Nome do Workflow
-name: Gravar Live
-
+name: Teste YAML
 on:
-  # Executa toda Sexta, Sábado e Domingo às 18h (horário de Brasília / 21h UTC)
-  schedule:
-    - cron: '0 21 * * 5' # Sexta 18h BRT
-    - cron: '0 21 * * 6' # Sábado 18h BRT
-    - cron: '0 21 * * 0' # Domingo 18h BRT
-  # Permite a execução manual pela aba "Actions" do GitHub
   workflow_dispatch:
-
 jobs:
-  gravar:
-    # Cancela o job se ele demorar mais de 3 horas (180 minutos)
-    timeout-minutes: 180
+  test:
     runs-on: ubuntu-latest
     steps:
-      # 1. Faz o checkout do código do repositório para a máquina virtual
-      - name: 1. Checkout do código
-        uses: actions/checkout@v3
-
-      # 2. Instala as dependências de sistema necessárias (ffmpeg para vídeo, etc.)
-      - name: 2. Instalar dependências do sistema
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 python3-pip curl
-
-      # 3. Baixa e instala a versão mais recente do rclone
-      - name: 3. Instalar rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-          rclone version
-
-      # 4. Baixa e instala a versão mais recente do yt-dlp
-      - name: 4. Instalar yt-dlp
-        run: |
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
-          yt-dlp --version
-
-      # 5. Cria o arquivo de configuração do rclone a partir do secret do repositório
-      - name: 5. Criar configuração do rclone
-        run: |
-          mkdir -p ~/.config/rclone
-          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
-
-      # 6. Cria o arquivo de cookies para o YouTube, se o secret existir
-      - name: 6. Criar arquivo de cookies do YouTube
-        if: ${{ secrets.YOUTUBE_COOKIES != '' }}
-        run: |
-          echo "Criando arquivo de cookies do YouTube..."
-          echo "${{ secrets.YOUTUBE_COOKIES }}" > "$HOME/yt-cookies.txt"
-
-      # 7. Envia uma notificação para o WhatsApp se os secrets estiverem configurados
-      - name: 7. Enviar notificação para WhatsApp
-        if: ${{ success() && secrets.TWILIO_ACCOUNT_SID != '' && secrets.WHATSAPP_API_KEY != '' }}
-        run: |
-          echo "Enviando notificação para o WhatsApp..."
-          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.TWILIO_ACCOUNT_SID }}/Messages.json" \
-            --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \
-            --data-urlencode "From=${{ secrets.WHATSAPP_SENDER_NUMBER }}" \
-            --data-urlencode "Body=Iniciando a gravação da live!" \
-            -u "${{ secrets.TWILIO_ACCOUNT_SID }}:${{ secrets.WHATSAPP_API_KEY }}"
-
-      # 8. Executa o script principal de gravação
-      - name: 8. Rodar script de gravação
-        run: |
-          bash ./script.sh
-
+      - name: Echo
+        run: echo "Testando workflow"

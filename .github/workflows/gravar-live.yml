@@ -1,60 +1,71 @@
 # Nome do Workflow
-name: Gravar Live (Versão de Diagnóstico)
+name: Gravar Live
 
 on:
-  # Permite a execução manual
+  # Executa toda Sexta, Sábado e Domingo às 18h (horário de Brasília / 21h UTC)
+  schedule:
+    - cron: '0 21 * * 5' # Sexta 18h BRT
+    - cron: '0 21 * * 6' # Sábado 18h BRT
+    - cron: '0 21 * * 0' # Domingo 18h BRT
+  # Permite a execução manual pela aba "Actions" do GitHub
   workflow_dispatch:
 
 jobs:
   gravar:
+    # Cancela o job se ele demorar mais de 3 horas (180 minutos)
+    timeout-minutes: 180
     runs-on: ubuntu-latest
     steps:
-      - name: 1. A fazer o checkout do código
+      # 1. Faz o checkout do código do repositório para a máquina virtual
+      - name: 1. Checkout do código
         uses: actions/checkout@v3
 
-      - name: 2. A instalar dependências
+      # 2. Instala as dependências de sistema necessárias (ffmpeg para vídeo, etc.)
+      - name: 2. Instalar dependências do sistema
         run: |
-          echo "A instalar ffmpeg, python, pip e curl..."
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3 python3-pip curl
-          echo "Dependências instaladas."
 
-      - name: 3. A instalar rclone
+      # 3. Baixa e instala a versão mais recente do rclone
+      - name: 3. Instalar rclone
         run: |
-          echo "A instalar rclone..."
           curl https://rclone.org/install.sh | sudo bash
-          echo "rclone instalado."
+          rclone version
 
-      - name: 4. A instalar yt-dlp
+      # 4. Baixa e instala a versão mais recente do yt-dlp
+      - name: 4. Instalar yt-dlp
         run: |
-          echo "A instalar yt-dlp..."
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          echo "yt-dlp instalado."
+          yt-dlp --version
 
-      - name: 5. A criar configuração do rclone
+      # 5. Cria o arquivo de configuração do rclone a partir do secret do repositório
+      - name: 5. Criar configuração do rclone
         run: |
-          echo "A criar o diretório de configuração do rclone..."
           mkdir -p ~/.config/rclone
-          echo "A escrever o ficheiro de configuração..."
           echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
-          echo "Configuração do rclone criada."
 
-      - name: 5.1. A criar ficheiro de cookies do YouTube
-        # Só cria se o secret YOUTUBE_COOKIES estiver definido
+      # 6. Cria o arquivo de cookies para o YouTube, se o secret existir
+      - name: 6. Criar arquivo de cookies do YouTube
         if: ${{ secrets.YOUTUBE_COOKIES != '' }}
         run: |
-          echo "A criar o ficheiro de cookies do YouTube..."
+          echo "Criando arquivo de cookies do YouTube..."
           echo "${{ secrets.YOUTUBE_COOKIES }}" > "$HOME/yt-cookies.txt"
-          echo "Ficheiro de cookies criado em $HOME/yt-cookies.txt."
 
-      # A etapa de notificação está temporariamente desativada para diagnóstico
-      # - name: Enviar notificação para WhatsApp
-      #   if: success()
-      #   run: echo "Etapa de notificação ignorada."
-
-      - name: 6. A rodar o script de gravação
+      # 7. Envia uma notificação para o WhatsApp, se os secrets estiverem configurados
+      - name: 7. Enviar notificação para WhatsApp
+        # Esta etapa só executa se o workflow estiver a correr com sucesso e se os secrets da Twilio existirem
+        if: ${{ success() && secrets.TWILIO_ACCOUNT_SID != '' && secrets.WHATSAPP_API_KEY != '' }}
         run: |
-          echo "A iniciar o script principal (script.sh)..."
+          echo "Enviando notificação para o WhatsApp..."
+          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.TWILIO_ACCOUNT_SID }}/Messages.json" \
+            --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \
+            --data-urlencode "From=${{ secrets.WHATSAPP_SENDER_NUMBER }}" \
+            --data-urlencode "Body=Iniciando a gravação da live!" \
+            -u "${{ secrets.TWILIO_ACCOUNT_SID }}:${{ secrets.WHATSAPP_API_KEY }}"
+
+      # 8. Executa o script principal de gravação
+      - name: 8. Rodar script de gravação
+        run: |
           bash ./script.sh
 

@@ -1,12 +1,14 @@
 services:
   - type: cron
-    name: gravador-de-lives
+    name: gravador-de-lives-nerd
     plan: free
-    dockerfilePath: Dockerfile
-    schedule: "0 21 * * 5,6,0" # sexta, sábado e domingo às 21h UTC (18h Brasília)
+    dockerfilePath: ./Dockerfile
+    schedule: "0 21 * * 5" # Roda 21h UTC toda Sexta (equivale a 18h em Brasília -3 UTC)
     envVars:
-      - key: RCLONE_CONFIG
-        value: /opt/render/project/src/rclone-secrets/drive_config
+      - key: RCLONE_CONFIG_DRIVE_CONFIG
+        fromSecretFile: ./rclone-secrets/drive_config
+      - key: RCLONE_CONFIG_DRIVE_TYPE
+        value: drive 
     secretFiles:
       - key: drive_config
-        path: rclone-secrets/drive_config
+        path: ./rclone-secrets/drive_config

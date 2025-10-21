@@ -4,7 +4,7 @@ set -e
 # --------------------------
 # Configurações
 # --------------------------
-URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@guilherme6231/live}"
+URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@Ralisco/live}"
 NOME_DO_REMOTO="MeuDrive"
 PASTA_NO_DRIVE="LivesCoisaDeNerd"
 DIRETORIO_TEMPORARIO="/tmp/gravacao"

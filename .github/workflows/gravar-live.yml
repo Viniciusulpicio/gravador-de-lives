@@ -48,7 +48,7 @@ jobs:
 
       # 6. Envia notificação para o WhatsApp (Número 1)
       - name: Enviar notificação para WhatsApp
-        if: success() && secrets.WHATSAPP_API_KEY != ''
+        if: ${{ success() && secrets.WHATSAPP_API_KEY != '' }}
         run: |
           curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.WHATSAPP_API_KEY }}/Messages.json" \
           --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \

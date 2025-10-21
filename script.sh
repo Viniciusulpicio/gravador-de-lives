@@ -28,7 +28,7 @@ fi
 
 # Adiciona o $COOKIE_ARG ao comando do yt-dlp
 # Se o arquivo não existir, $COOKIE_ARG será uma string vazia e não afetará o comando
-yt-dlp $COOKIE_ARG --live-from-start --wait-for-video 1-43200 \
+yt-dlp $COOKIE_ARG --live-from-start --wait-for-video 1-9900 \
     -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
 STATUS=${PIPESTATUS[0]}
 

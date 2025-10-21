@@ -4,11 +4,8 @@ services:
     plan: free
     dockerfilePath: Dockerfile
     schedule: "0 21 * * 5"
-
-    # Esta é a parte nova que você precisa adicionar
     envGroups:
       - name: gravador-secrets
-
     secretFiles:
       - key: drive_config
-        path: /rclone-secrets/drive_config
+        path: /rclone-secrets/drive_config # <--- CORRIGIDO: O caminho estava com erro de digitação

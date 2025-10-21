@@ -1,63 +1,12 @@
-# Nome do Workflow
-name: Gravar Live
+name: Teste Simples
 
-# Gatilhos de execução
 on:
-  schedule:
-    # Agendamento para toda Sexta, Sábado e Domingo às 18h (Horário de Brasília)
-    # O cron usa o fuso horário UTC. 21h UTC = 18h BRT.
-    - cron: '0 21 * * 5' # Sexta
-    - cron: '0 21 * * 6' # Sábado
-    - cron: '0 21 * * 0' # Domingo
-  # Permite a execução manual do workflow pela interface do GitHub
   workflow_dispatch:
 
 jobs:
-  gravar:
-    # A execução agora é gratuita em repositórios públicos
+  teste:
     runs-on: ubuntu-latest
-    # Define um tempo limite de 3 horas (180 minutos) para o job
-    timeout-minutes: 180
     steps:
-      # 1. Faz o checkout do código do seu repositório
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      # 2. Instala dependências básicas do sistema
-      - name: Setup dependências
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 python3-pip curl
-
-      # 3. Instala rclone (versão mais recente)
-      - name: Install rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-
-      # 4. Instala yt-dlp (versão mais recente)
-      - name: Install yt-dlp
-        run: |
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
-
-      # 5. Cria o arquivo de configuração do rclone a partir do secret
-      - name: Criar config rclone
-        run: |
-          mkdir -p ~/.config/rclone
-          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
-
-      # 6. Envia notificação para o WhatsApp (Número 1)
-      - name: Enviar notificação para WhatsApp
-        if: ${{ success() && secrets.WHATSAPP_API_KEY != '' }}
-        run: |
-          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${{ secrets.WHATSAPP_API_KEY }}/Messages.json" \
-          --data-urlencode "To=${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}" \
-          --data-urlencode "From=${{ secrets.WHATSAPP_SENDER_NUMBER }}" \
-          --data-urlencode "Body=🚀 O script de gravação da live foi iniciado!" \
-          -u "${{ secrets.WHATSAPP_API_KEY }}:${{ secrets.WHATSAPP_API_KEY }}"
-
-      # 7. Executa o script de gravação principal
-      - name: Rodar script de gravação
-        run: |
-          bash ./script.sh
+      - name: Imprimir Mensagem
+        run: echo "Olá Mundo! O workflow de teste está a funcionar."
 

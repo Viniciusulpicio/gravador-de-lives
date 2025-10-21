@@ -1,12 +1,52 @@
-name: Teste Simples
+# Nome do Workflow
+name: Gravar Live (Versão de Diagnóstico)
 
 on:
+  # Permite a execução manual
   workflow_dispatch:
 
 jobs:
-  teste:
+  gravar:
     runs-on: ubuntu-latest
     steps:
-      - name: Imprimir Mensagem
-        run: echo "Olá Mundo! O workflow de teste está a funcionar."
+      - name: 1. A fazer o checkout do código
+        uses: actions/checkout@v3
+
+      - name: 2. A instalar dependências
+        run: |
+          echo "A instalar ffmpeg, python, pip e curl..."
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg python3 python3-pip curl
+          echo "Dependências instaladas."
+
+      - name: 3. A instalar rclone
+        run: |
+          echo "A instalar rclone..."
+          curl https://rclone.org/install.sh | sudo bash
+          echo "rclone instalado."
+
+      - name: 4. A instalar yt-dlp
+        run: |
+          echo "A instalar yt-dlp..."
+          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+          sudo chmod a+rx /usr/local/bin/yt-dlp
+          echo "yt-dlp instalado."
+
+      - name: 5. A criar configuração do rclone
+        run: |
+          echo "A criar o diretório de configuração do rclone..."
+          mkdir -p ~/.config/rclone
+          echo "A escrever o ficheiro de configuração..."
+          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
+          echo "Configuração do rclone criada."
+
+      # A etapa de notificação está temporariamente desativada para diagnóstico
+      # - name: Enviar notificação para WhatsApp
+      #   if: success()
+      #   run: echo "Etapa de notificação ignorada."
+
+      - name: 6. A rodar o script de gravação
+        run: |
+          echo "A iniciar o script principal (script.sh)..."
+          bash ./script.sh
 

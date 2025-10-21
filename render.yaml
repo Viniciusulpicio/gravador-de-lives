@@ -2,10 +2,10 @@ services:
   - type: cron
     name: gravador-de-lives-nerd
     plan: free
-    dockerfilePath: ./Dockerfile
-    schedule: "0 21 * * 5" # 21h UTC toda sexta
-    envVars:
-      - key: RCLONE_CONFIG_DRIVE_CONFIG
-        fromFile: ./rclone-secrets/drive_config
-      - key: RCLONE_CONFIG_DRIVE_TYPE
-        value: drive
+    dockerfilePath: Dockerfile
+    schedule: "0 21 * * 5"
+    envGroups:
+      - name: gravador-secrets
+    secretFiles:
+      - key: drive_config
+        path: /rclone-secrets/drive_config

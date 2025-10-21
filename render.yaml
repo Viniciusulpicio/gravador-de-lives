@@ -2,7 +2,7 @@ services:
   - type: cron
     name: gravador-de-lives-nerd
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: Dockerfile # <--- CORRIGIDO: Removido o "./"
     schedule: "0 21 * * 5" # Roda 21h UTC toda Sexta (equivale a 18h em Brasília -3 UTC)
     secretFiles:
       - key: drive_config

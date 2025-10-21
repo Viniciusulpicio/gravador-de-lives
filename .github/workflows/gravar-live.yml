@@ -14,6 +14,7 @@ on:
 
 jobs:
   gravar:
+    # A execução agora é gratuita em repositórios públicos
     runs-on: ubuntu-latest
     # Define um tempo limite de 3 horas (180 minutos) para o job
     timeout-minutes: 180

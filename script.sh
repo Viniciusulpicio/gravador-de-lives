@@ -20,7 +20,7 @@ echo ">>> Canal: $URL_DO_CANAL" | tee -a "$LOG_FILE"
 yt-dlp \
   --live-from-start \
   --hls-use-mpegts \
-  --wait-for-video 3600 \
+  --wait-for-video 21600 \
   -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" \
   "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
 

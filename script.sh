@@ -2,7 +2,7 @@
 set -e
 
 # === CONFIGURAÇÕES ===
-URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@Ralisco/live}"
+URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@Ralisco/streams}"
 NOME_DO_REMOTO="${NOME_DO_REMOTO:-MeuDrive}"
 PASTA_NO_DRIVE="${PASTA_NO_DRIVE:-LivesCoisaDeNerd}"
 DIRETORIO_TEMPORARIO="/tmp/gravacao"

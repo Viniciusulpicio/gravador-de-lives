@@ -23,6 +23,7 @@ jobs:
       WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
       WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
       TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v3

@@ -20,18 +20,17 @@ jobs:
     timeout-minutes: 360  # 6 horas máximo
     runs-on: ubuntu-latest
     
-    env:
-      URL_DO_CANAL: 'https://www.youtube.com/@Ralisco/streams'
-      NOME_DO_REMOTO: 'MeuDrive'
-      PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
-      PASTA_LOGS: 'LogsGravacao'
-      NOME_ARQUIVO_FORMATO: '%(uploader)s - %(upload_date)s - %(title)s.%(ext)s'
-      # MUDANÇA AQUI: Renomeado para não conflitar com o rclone
-      RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }} 
-      WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
-      WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
-      WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
-      TEMPO_MAXIMO_ESPERA: ${{ github.event.inputs.tempo_espera || '3' }}
+  env:
+        URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/streams'
+        NOME_DO_REMOTO: 'MeuDrive'
+        PASTA_NO_DRIVE: 'LivesCoisaDeNerd' 
+        PASTA_LOGS: 'LogsGravacao'
+        NOME_ARQUIVO_FORMATO: '%(uploader)s - %(upload_date)s - %(title)s.%(ext)s'
+        RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }} 
+        WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
+        WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
+        WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
+        TEMPO_MAXIMO_ESPERA: ${{ github.event.inputs.tempo_espera || '3' }}
       
     steps:
       - name: Checkout código

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     
     env:
-      URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
+      URL_DO_CANAL: 'https://www.youtube.com/@Ralisco/live'
       NOME_DO_REMOTO: 'MeuDrive'
       PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
       PASTA_LOGS: 'LogsGravacao'

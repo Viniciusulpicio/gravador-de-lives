@@ -11,18 +11,25 @@ NOME_ARQUIVO_FORMATO="${NOME_ARQUIVO_FORMATO:-%(uploader)s - %(upload_date)s - %
 LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
 RCLONE_CONFIG_PATH="$HOME/.config/rclone/rclone.conf"
 
-# Configurações de tempo
-TEMPO_MAXIMO_ESPERA=${TEMPO_MAXIMO_ESPERA:-10800}  # 3 horas em segundos
-INTERVALO_VERIFICACAO=180  # Verificar a cada 3 minutos
-TEMPO_INICIO=$(date +%s)
+# Configurações de tempo (em segundos)
+TEMPO_MAXIMO_ESPERA=10800  # 3 horas de espera máxima
+INTERVALO_VERIFICACAO=300   # Verificar a cada 5 minutos
+TENTATIVAS_MAXIMAS=$((TEMPO_MAXIMO_ESPERA / INTERVALO_VERIFICACAO))
 
 mkdir -p "$DIRETORIO_TEMPORARIO"
 mkdir -p "$(dirname "$RCLONE_CONFIG_PATH")"
 
-# Configurar rclone
+# Configurar rclone - verifica se o conteúdo está em variável de ambiente
 if [ -n "$RCLONE_CONFIG" ]; then
     echo "$RCLONE_CONFIG" > "$RCLONE_CONFIG_PATH"
     chmod 600 "$RCLONE_CONFIG_PATH"
+    echo "Configuração do rclone criada em $RCLONE_CONFIG_PATH"
+fi
+
+# Verificar se o arquivo de configuração existe
+if [ ! -f "$RCLONE_CONFIG_PATH" ]; then
+    echo "ERRO: Arquivo de configuração do rclone não encontrado em $RCLONE_CONFIG_PATH"
+    exit 1
 fi
 
 # === FUNÇÃO DE LOG ===
@@ -30,184 +37,142 @@ log_msg() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# === FUNÇÃO DE NOTIFICAÇÃO ===
+# === FUNÇÃO DE NOTIFICAÇÃO WHATSAPP ===
 enviar_notificacao() {
     local mensagem="$1"
+    
     if [ -n "$WHATSAPP_API_KEY" ] && [ -n "$WHATSAPP_RECEIVER_NUMBER_1" ]; then
-        curl -s -X POST "https://api.callmebot.com/whatsapp.php" \
+        curl -X POST "https://api.callmebot.com/whatsapp.php" \
             -d "phone=$WHATSAPP_RECEIVER_NUMBER_1" \
-            -d "text=$mensagem" \
-            -d "apikey=$WHATSAPP_API_KEY" >/dev/null 2>&1 || true
+            -d "text=$(echo "$mensagem" | jq -sRr @uri)" \
+            -d "apikey=$WHATSAPP_API_KEY" \
+            2>/dev/null || true
     fi
 }
 
-# === FUNÇÃO PARA EXTRAIR URL DA LIVE ===
-obter_url_live() {
-    log_msg "Buscando URL da live..."
+# === VERIFICAR SE HÁ LIVE ATIVA ===
+verificar_live_ativa() {
+    log_msg "Verificando se há live ativa..."
     
-    # Busca a URL real da live (não a página do canal)
-    LIVE_URL=$(yt-dlp --playlist-items 1 --get-url --no-warnings "$URL_DO_CANAL" 2>/dev/null | head -n 1)
+    # Tenta obter informações da live sem baixar
+    INFO=$(yt-dlp --skip-download --print "%(is_live)s|%(title)s" "$URL_DO_CANAL" 2>/dev/null || echo "")
     
-    if [ -z "$LIVE_URL" ]; then
-        return 1
+    if [ -z "$INFO" ]; then
+        return 1  # Nenhuma live encontrada
     fi
     
-    # Verifica se é realmente uma live ativa agora
-    IS_LIVE=$(yt-dlp --skip-download --print "%(is_live)s" "$LIVE_URL" 2>/dev/null || echo "")
+    IS_LIVE=$(echo "$INFO" | cut -d'|' -f1)
+    TITULO=$(echo "$INFO" | cut -d'|' -f2)
     
     if [ "$IS_LIVE" = "True" ]; then
-        echo "$LIVE_URL"
-        return 0
+        log_msg "✓ Live encontrada: $TITULO"
+        return 0  # Live está ativa
+    else
+        return 1  # Não é uma live ativa
     fi
-    
-    return 1
-}
-
-# === FUNÇÃO PARA OBTER INFO DA LIVE ===
-obter_info_live() {
-    local url="$1"
-    yt-dlp --skip-download --print "%(title)s" "$url" 2>/dev/null || echo "Live sem título"
 }
 
 # === INÍCIO DO PROCESSO ===
 log_msg "=========================================="
-log_msg "🎥 Iniciando monitoramento de lives"
+log_msg "Iniciando monitoramento de lives"
 log_msg "Canal: $URL_DO_CANAL"
-log_msg "Tempo máximo: $((TEMPO_MAXIMO_ESPERA / 3600))h"
+log_msg "Tempo máximo de espera: $((TEMPO_MAXIMO_ESPERA / 3600))h"
 log_msg "=========================================="
 
-enviar_notificacao "🎥 Monitoramento iniciado - Coisa de Nerd"
+enviar_notificacao "🎥 Monitoramento iniciado - Canal: Coisa de Nerd"
 
 # === LOOP DE VERIFICAÇÃO ===
 TENTATIVA=0
-LIVE_URL=""
+LIVE_ENCONTRADA=false
 
-while true; do
-    TEMPO_ATUAL=$(date +%s)
-    TEMPO_DECORRIDO=$((TEMPO_ATUAL - TEMPO_INICIO))
-    
-    # Verifica timeout
-    if [ $TEMPO_DECORRIDO -ge $TEMPO_MAXIMO_ESPERA ]; then
-        log_msg "⏰ Tempo máximo de espera atingido ($((TEMPO_MAXIMO_ESPERA / 3600))h)"
-        break
-    fi
-    
+while [ $TENTATIVA -lt $TENTATIVAS_MAXIMAS ]; do
     TENTATIVA=$((TENTATIVA + 1))
-    TEMPO_RESTANTE=$((TEMPO_MAXIMO_ESPERA - TEMPO_DECORRIDO))
+    log_msg "Tentativa $TENTATIVA de $TENTATIVAS_MAXIMAS"
     
-    log_msg "Tentativa #$TENTATIVA (restam $((TEMPO_RESTANTE / 60)) min)"
-    
-    # Tenta obter URL da live
-    LIVE_URL=$(obter_url_live)
-    
-    if [ -n "$LIVE_URL" ]; then
-        TITULO=$(obter_info_live "$LIVE_URL")
-        log_msg "✅ LIVE ENCONTRADA!"
-        log_msg "Título: $TITULO"
-        log_msg "URL: $LIVE_URL"
+    if verificar_live_ativa; then
+        LIVE_ENCONTRADA=true
         break
     fi
     
-    log_msg "❌ Nenhuma live ativa no momento"
-    
-    # Aguarda antes da próxima verificação
-    if [ $TEMPO_DECORRIDO -lt $TEMPO_MAXIMO_ESPERA ]; then
-        log_msg "⏳ Aguardando $((INTERVALO_VERIFICACAO / 60)) minutos..."
-        sleep $INTERVALO_VERIFICACAO
+    if [ $TENTATIVA -lt $TENTATIVAS_MAXIMAS ]; then
+        log_msg "Nenhuma live ativa. Aguardando $((INTERVALO_VERIFICACAO / 60)) minutos..."
+        sleep "$INTERVALO_VERIFICACAO"
     fi
 done
 
-# === VERIFICAR SE ENCONTROU LIVE ===
-if [ -z "$LIVE_URL" ]; then
-    log_msg "=========================================="
-    log_msg "❌ Nenhuma live encontrada no período"
-    log_msg "=========================================="
-    enviar_notificacao "❌ Sem live hoje - Coisa de Nerd"
+# === PROCESSAR RESULTADO ===
+if [ "$LIVE_ENCONTRADA" = false ]; then
+    log_msg "❌ Nenhuma live encontrada após $((TEMPO_MAXIMO_ESPERA / 3600))h de espera"
+    enviar_notificacao "❌ Nenhuma live encontrada hoje - Coisa de Nerd"
     
-    # Upload do log
-    rclone copy "$LOG_FILE" \
-        "$NOME_DO_REMOTO:$PASTA_LOGS/sem_live_$(date +%Y%m%d_%H%M%S).log" \
+    # Upload do log de "sem live"
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sem_live_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
     
-    exit 0
+    exit 0  # Sai com sucesso (não é erro, apenas não havia live)
 fi
 
-# === GRAVAR A LIVE ===
+# === GRAVAÇÃO ===
 log_msg "=========================================="
-log_msg "🔴 INICIANDO GRAVAÇÃO"
+log_msg "Iniciando gravação da live..."
 log_msg "=========================================="
 
-enviar_notificacao "🔴 GRAVAÇÃO INICIADA! - $TITULO"
+enviar_notificacao "🔴 Gravação iniciada! - Coisa de Nerd"
 
-# Usar a URL específica da live (não a página do canal)
 yt-dlp \
   --live-from-start \
+  --hls-use-mpegts \
   --no-part \
-  --concurrent-fragments 3 \
   --format "best[ext=mp4]/best" \
-  --retries 10 \
-  --fragment-retries 10 \
-  --output "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" \
-  "$LIVE_URL" 2>&1 | tee -a "$LOG_FILE"
+  -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" \
+  "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
 
 STATUS=${PIPESTATUS[0]}
 
-# === PROCESSAR RESULTADO ===
+# === PROCESSAMENTO PÓS-GRAVAÇÃO ===
 if [ $STATUS -eq 0 ]; then
-    log_msg "✅ Gravação finalizada com sucesso!"
+    log_msg "✓ Gravação concluída com sucesso!"
     
-    # Contar arquivos de vídeo
-    VIDEO_COUNT=$(find "$DIRETORIO_TEMPORARIO" -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.webm" \) 2>/dev/null | wc -l)
+    # Verificar se há arquivos de vídeo
+    VIDEO_COUNT=$(find "$DIRETORIO_TEMPORARIO" -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.webm" \) | wc -l)
     
     if [ "$VIDEO_COUNT" -eq 0 ]; then
-        log_msg "⚠️  Nenhum arquivo de vídeo gerado"
-        enviar_notificacao "⚠️  Gravação sem arquivo - Coisa de Nerd"
+        log_msg "⚠ Nenhum arquivo de vídeo encontrado para upload"
+        enviar_notificacao "⚠ Gravação sem vídeo - Coisa de Nerd"
     else
-        log_msg "📤 Enviando $VIDEO_COUNT arquivo(s) para o Drive..."
-        enviar_notificacao "📤 Enviando para o Drive..."
+        log_msg "Enviando $VIDEO_COUNT arquivo(s) para o Google Drive..."
+        enviar_notificacao "📤 Enviando vídeo para o Drive - Coisa de Nerd"
         
-        # Upload dos vídeos
         rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" \
             --config "$RCLONE_CONFIG_PATH" \
             --include "*.mp4" --include "*.mkv" --include "*.webm" \
-            --progress \
-            --delete-empty-src-dirs \
-            --transfers 4 \
-            --checkers 8 \
-            2>&1 | tee -a "$LOG_FILE"
+            --progress --delete-empty-src-dirs 2>&1 | tee -a "$LOG_FILE"
         
-        if [ $? -eq 0 ]; then
-            log_msg "✅ Upload concluído!"
-            enviar_notificacao "✅ VÍDEO NO DRIVE! - Coisa de Nerd"
-        else
-            log_msg "❌ Erro no upload"
-            enviar_notificacao "❌ Erro no upload - Coisa de Nerd"
-        fi
+        log_msg "✓ Upload de vídeo concluído!"
+        enviar_notificacao "✅ Vídeo salvo no Drive com sucesso! - Coisa de Nerd"
     fi
     
-    # Upload do log de sucesso
-    rclone copy "$LOG_FILE" \
-        "$NOME_DO_REMOTO:$PASTA_LOGS/sucesso_$(date +%Y%m%d_%H%M%S).log" \
+    # Upload do log
+    log_msg "Enviando log para o Google Drive..."
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sucesso_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
     
 else
-    log_msg "❌ Erro na gravação (código: $STATUS)"
-    enviar_notificacao "❌ ERRO NA GRAVAÇÃO - código $STATUS"
+    log_msg "❌ Erro durante a gravação. Código: $STATUS"
+    enviar_notificacao "❌ Erro na gravação - Código: $STATUS - Coisa de Nerd"
     
     # Upload do log de erro
-    rclone copy "$LOG_FILE" \
-        "$NOME_DO_REMOTO:$PASTA_LOGS/erro_$(date +%Y%m%d_%H%M%S).log" \
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
     
     exit 1
 fi
 
-# === LIMPEZA ===
-log_msg "🧹 Limpando arquivos temporários..."
+# === LIMPEZA FINAL ===
+log_msg "Limpando arquivos temporários..."
 rm -rf "$DIRETORIO_TEMPORARIO"
-
 log_msg "=========================================="
-log_msg "✅ PROCESSO FINALIZADO"
+log_msg "Processo finalizado com sucesso!"
 log_msg "=========================================="
 
 exit 0

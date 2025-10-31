@@ -12,30 +12,50 @@ LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
 RCLONE_CONFIG_PATH="$HOME/.config/rclone/rclone.conf"
 
 # Configurações de tempo (em segundos)
-TEMPO_MAXIMO_ESPERA=10800  # 3 horas de espera máxima
 INTERVALO_VERIFICACAO=300   # Verificar a cada 5 minutos
-TENTATIVAS_MAXIMAS=$((TEMPO_MAXIMO_ESPERA / INTERVALO_VERIFICACAO))
+TEMPO_MAXIMO_ESPERA_DEFAULT=10800 # 3 horas de espera máxima
 
 mkdir -p "$DIRETORIO_TEMPORARIO"
 mkdir -p "$(dirname "$RCLONE_CONFIG_PATH")"
-
-# Configurar rclone - verifica se o conteúdo está em variável de ambiente
-if [ -n "$RCLONE_CONFIG" ]; then
-    echo "$RCLONE_CONFIG" > "$RCLONE_CONFIG_PATH"
-    chmod 600 "$RCLONE_CONFIG_PATH"
-    echo "Configuração do rclone criada em $RCLONE_CONFIG_PATH"
-fi
-
-# Verificar se o arquivo de configuração existe
-if [ ! -f "$RCLONE_CONFIG_PATH" ]; then
-    echo "ERRO: Arquivo de configuração do rclone não encontrado em $RCLONE_CONFIG_PATH"
-    exit 1
-fi
 
 # === FUNÇÃO DE LOG ===
 log_msg() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
+
+# === CORREÇÃO: CONVERTER TEMPO DE HORAS PARA SEGUNDOS ===
+# O workflow passa TEMPO_MAXIMO_ESPERA como '3' (horas)
+# O script precisa de segundos para o cálculo de tentativas.
+
+if [ -n "$TEMPO_MAXIMO_ESPERA" ] && [ "$TEMPO_MAXIMO_ESPERA" -lt 1000 ]; then
+    # Se o número for pequeno (ex: '3'), assume que são horas e converte
+    log_msg "Valor de TEMPO_MAXIMO_ESPERA ($TEMPO_MAXIMO_ESPERA) detectado como horas. Convertendo para segundos."
+    TEMPO_MAXIMO_ESPERA=$((TEMPO_MAXIMO_ESPERA * 3600))
+else
+    # Caso contrário, usa o valor passado (se for grande) ou o padrão
+    TEMPO_MAXIMO_ESPERA=${TEMPO_MAXIMO_ESPERA:-$TEMPO_MAXIMO_ESPERA_DEFAULT}
+fi
+
+TENTATIVAS_MAXIMAS=$((TEMPO_MAXIMO_ESPERA / INTERVALO_VERIFICACAO))
+# ========================================================
+
+
+# Configurar rclone - verifica se o conteúdo está em variável de ambiente
+# === CORREÇÃO: Variável renomeada para RCLONE_CONFIG_CONTENT ===
+if [ -n "$RCLONE_CONFIG_CONTENT" ]; then
+    echo "$RCLONE_CONFIG_CONTENT" > "$RCLONE_CONFIG_PATH"
+    chmod 600 "$RCLONE_CONFIG_PATH"
+    log_msg "Configuração do rclone criada em $RCLONE_CONFIG_PATH"
+else
+    log_msg "AVISO: Variável RCLONE_CONFIG_CONTENT não definida. Rclone pode falhar."
+fi
+# =============================================================
+
+# Verificar se o arquivo de configuração existe
+if [ ! -f "$RCLONE_CONFIG_PATH" ]; then
+    log_msg "ERRO: Arquivo de configuração do rclone não encontrado em $RCLONE_CONFIG_PATH"
+    exit 1
+fi
 
 # === FUNÇÃO DE NOTIFICAÇÃO WHATSAPP ===
 enviar_notificacao() {
@@ -76,7 +96,9 @@ verificar_live_ativa() {
 log_msg "=========================================="
 log_msg "Iniciando monitoramento de lives"
 log_msg "Canal: $URL_DO_CANAL"
-log_msg "Tempo máximo de espera: $((TEMPO_MAXIMO_ESPERA / 3600))h"
+log_msg "Tempo máximo de espera: $((TEMPO_MAXIMO_ESPERA / 3600))h ($TENTATIVAS_MAXIMAS tentativas)"
+log_msg "Verificando remotas do rclone:"
+rclone listremotes --config "$RCLONE_CONFIG_PATH" | tee -a "$LOG_FILE"
 log_msg "=========================================="
 
 enviar_notificacao "🎥 Monitoramento iniciado - Canal: Coisa de Nerd"
@@ -108,7 +130,7 @@ if [ "$LIVE_ENCONTRADA" = false ]; then
     # Upload do log de "sem live"
     rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sem_live_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
-    
+        
     exit 0  # Sai com sucesso (não é erro, apenas não havia live)
 fi
 
@@ -147,7 +169,7 @@ if [ $STATUS -eq 0 ]; then
             --config "$RCLONE_CONFIG_PATH" \
             --include "*.mp4" --include "*.mkv" --include "*.webm" \
             --progress --delete-empty-src-dirs 2>&1 | tee -a "$LOG_FILE"
-        
+            
         log_msg "✓ Upload de vídeo concluído!"
         enviar_notificacao "✅ Vídeo salvo no Drive com sucesso! - Coisa de Nerd"
     fi
@@ -156,7 +178,7 @@ if [ $STATUS -eq 0 ]; then
     log_msg "Enviando log para o Google Drive..."
     rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sucesso_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
-    
+        
 else
     log_msg "❌ Erro durante a gravação. Código: $STATUS"
     enviar_notificacao "❌ Erro na gravação - Código: $STATUS - Coisa de Nerd"
@@ -164,7 +186,7 @@ else
     # Upload do log de erro
     rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_$(date +%Y-%m-%d_%H-%M-%S).log" \
         --config "$RCLONE_CONFIG_PATH" 2>&1 | tee -a "$LOG_FILE" || true
-    
+        
     exit 1
 fi
 

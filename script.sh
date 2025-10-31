@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-URL_DO_CANAL="${URL_DO_CANAL:https://www.youtube.com/@republicacoisadenerd/streams}"
+URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
 
 NOME_DO_REMOTO="${NOME_DO_REMOTO:-MeuDrive}"
 PASTA_NO_DRIVE="${PASTA_NO_DRIVE:-LivesCoisaDeNerd}"

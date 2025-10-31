@@ -9,7 +9,7 @@ on:
 
 jobs:
   gravar:
-    timeout-minutes: 180
+    timeout-minutes: 360
     runs-on: ubuntu-latest
     env:
       URL_DO_CANAL: 'https://www.youtube.com/@acfperformance/streams'

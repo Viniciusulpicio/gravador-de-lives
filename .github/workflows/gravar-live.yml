@@ -62,6 +62,8 @@ jobs:
           mkdir -p ~/.config/rclone
           echo "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
           chmod 600 ~/.config/rclone/rclone.conf
+          echo "Configuração do rclone criada com sucesso"
+          ls -lh ~/.config/rclone/
       
       - name: Verificar configuração
         run: |

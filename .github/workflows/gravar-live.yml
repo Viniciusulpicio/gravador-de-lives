@@ -1,72 +1,67 @@
-name: Gravar Live Coisa de Nerd
+name: Gravar Live
 
 on:
   schedule:
-    # Sexta-feira às 18:30 BRT (21:30 UTC)
-    - cron: '30 21 * * 5'
-    # Sábado às 18:30 BRT (21:30 UTC)
-    - cron: '30 21 * * 6'
-    # Domingo às 18:30 BRT (21:30 UTC)
-    - cron: '30 21 * * 0'
+    - cron: '0 21 * * 5'
+    - cron: '0 21 * * 6'
+    - cron: '0 21 * * 0'
   workflow_dispatch:
-    inputs:
-      tempo_espera:
-        description: 'Tempo máximo de espera em horas'
-        required: false
-        default: '3'
 
 jobs:
   gravar:
-    timeout-minutes: 360  # 6 horas máximo
+    timeout-minutes: 180
     runs-on: ubuntu-latest
-    
-  env:
-        URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/streams'
-        NOME_DO_REMOTO: 'MeuDrive'
-        PASTA_NO_DRIVE: 'LivesCoisaDeNerd' 
-        PASTA_LOGS: 'LogsGravacao'
-        NOME_ARQUIVO_FORMATO: '%(uploader)s - %(upload_date)s - %(title)s.%(ext)s'
-        RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }} 
-        WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
-        WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
-        WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
-        TEMPO_MAXIMO_ESPERA: ${{ github.event.inputs.tempo_espera || '3' }}
-      
+    env:
+      URL_DO_CANAL: 'https://www.youtube.com/@Ralisco/live'
+      NOME_DO_REMOTO: 'MeuDrive'
+      PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
+      PASTA_LOGS: 'LogsGravacao'
+      NOME_ARQUIVO_FORMATO: '%(uploader)s - %(upload_date)s - %(title)s.%(ext)s'
+      YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+      RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+      WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
+      WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
+      WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+
     steps:
       - name: Checkout código
-        uses: actions/checkout@v4
-        
-      - name: Configurar timezone
-        run: |
-          sudo timedatectl set-timezone America/Sao_Paulo
-          date
-          
-      - name: Instalar dependências
+        uses: actions/checkout@v3
+
+      - name: Instalar dependências do sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 python3-pip curl jq
-          
+          sudo apt-get install -y ffmpeg python3 python3-pip curl
+
       - name: Instalar rclone
         run: |
           curl https://rclone.org/install.sh | sudo bash
           rclone version
-          
-      - name: Instalar yt-dlp (versão mais recente)
+
+      - name: Instalar yt-dlp
         run: |
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           yt-dlp --version
-          
-      - name: Executar gravação
+
+      - name: Criar configuração do rclone
         run: |
-          chmod +x ./script.sh
-          bash ./script.sh
-          
-      - name: Upload de logs em caso de falha
-        if: failure()
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+
+      - name: Criar arquivo de cookies do YouTube
+        if: ${{ env.YOUTUBE_COOKIES != '' }}
         run: |
-          if [ -f /tmp/gravacao/gravacao.log ]; then
-            # O script.sh já terá criado a config, então podemos usá-la aqui
-            rclone copy /tmp/gravacao/gravacao.log "$NOME_DO_REMOTO:$PASTA_LOGS/falha_$(date +%Y-%m-%d_%H-%M-%S).log" \
-              --config ~/.config/rclone/rclone.conf || true
-          fi
+          echo "$YOUTUBE_COOKIES" > $HOME/yt-cookies.txt
+
+      - name: Enviar notificação para WhatsApp
+        if: ${{ env.TWILIO_ACCOUNT_SID != '' && env.WHATSAPP_API_KEY != '' && env.WHATSAPP_SENDER_NUMBER != '' && env.WHATSAPP_RECEIVER_NUMBER_1 != '' }}
+        run: |
+          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
+            --data-urlencode "To=${WHATSAPP_RECEIVER_NUMBER_1}" \
+            --data-urlencode "From=${WHATSAPP_SENDER_NUMBER}" \
+            --data-urlencode "Body=Iniciando a gravação da live!" \
+            -u "${TWILIO_ACCOUNT_SID}:${WHATSAPP_API_KEY}"
+
+      - name: Rodar script de gravação
+        run: bash ./script.sh

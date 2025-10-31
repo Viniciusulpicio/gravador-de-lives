@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 180
     runs-on: ubuntu-latest
     env:
-      URL_DO_CANAL: 'https://www.youtube.com/@Ralisco/live'
+      URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/streams'
       NOME_DO_REMOTO: 'MeuDrive'
       PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
       PASTA_LOGS: 'LogsGravacao'

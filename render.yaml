@@ -3,7 +3,7 @@ services:
     name: gravador-de-lives-nerd
     plan: free
     dockerfilePath: Dockerfile
-    schedule: "0 0 * * 5,6,0"
+    schedule: "30 22 * * 5,6,0"
     envGroups:
       - name: gravador-secrets
     secretFiles:

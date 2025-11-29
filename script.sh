@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script de monitoramento e gravação de Lives do YouTube com Diagnóstico
-# Versão: Debug Ativo
+# Versão: Auto-Correction para Cookies Expirados
 
 # --- CONFIGURAÇÕES E VARIÁVEIS ---
 URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
@@ -24,7 +24,7 @@ echo ">>> Iniciando monitoramento: $(date)" | tee -a "$LOG_FILE"
 # --- CONFIGURAÇÃO DE COOKIES ---
 COOKIE_ARG=""
 if [ -f "$COOKIE_FILE" ]; then
-    echo ">>> Usando arquivo de cookies para autenticação." | tee -a "$LOG_FILE"
+    echo ">>> Usando arquivo de cookies para autenticação inicial." | tee -a "$LOG_FILE"
     COOKIE_ARG="--cookies $COOKIE_FILE"
 else
     echo ">>> AVISO: Arquivo de cookies não encontrado. Tentando sem autenticação." | tee -a "$LOG_FILE"
@@ -47,20 +47,35 @@ for ((i=1; i<=MAX_RETRIES; i++)); do
     # Limpa a saída (remove quebras de linha e espaços extras) para comparação segura
     CLEAN_OUTPUT=$(echo "$CHECK_OUTPUT" | tr -d '\n' | tr -d '\r' | sed 's/ //g')
 
-    # Lógica de Decisão
+    # --- Lógica de Decisão e Recuperação ---
+    
+    # 1. Sucesso: Live encontrada
     if [[ "$CLEAN_OUTPUT" == *"True"* ]]; then
         echo ">>> 🔴 LIVE DETECTADA! (Status: $CLEAN_OUTPUT). Iniciando gravação..." | tee -a "$LOG_FILE"
         FOUND_LIVE=1
         break
-    elif [[ "$CHECK_OUTPUT" == *"Sign in"* ]] || [[ "$CHECK_OUTPUT" == *"bot"* ]] || [[ "$CHECK_OUTPUT" == *"429"* ]]; then
-        # Se detectarmos palavras-chave de erro no OUTPUT original (não no limpo)
-        echo ">>> ⚠️  ALERTA CRÍTICO: Bloqueio ou Login exigido pelo YouTube." | tee -a "$LOG_FILE"
-        echo ">>> Detalhe do erro: $CHECK_OUTPUT" | tee -a "$LOG_FILE"
-        echo ">>> Aguardando 60s para tentar novamente..."
-        sleep 60
+    fi
+
+    # 2. Erro de Acesso (Cookies podres ou Bloqueio)
+    # Detecta "Sign in", "cookies are no longer valid", "bot", ou erro 429
+    if [[ "$CHECK_OUTPUT" == *"cookies are no longer valid"* ]] || [[ "$CHECK_OUTPUT" == *"Sign in"* ]] || [[ "$CHECK_OUTPUT" == *"bot"* ]] || [[ "$CHECK_OUTPUT" == *"429"* ]]; then
+        echo ">>> ⚠️  ALERTA: Problema de acesso detectado." | tee -a "$LOG_FILE"
+        
+        if [ -n "$COOKIE_ARG" ]; then
+            echo ">>> DIAGNÓSTICO: Os cookies atuais parecem inválidos ou expirados." | tee -a "$LOG_FILE"
+            echo ">>> AÇÃO: Desativando cookies e tentando novamente IMEDIATAMENTE (Fallback Mode)..." | tee -a "$LOG_FILE"
+            COOKIE_ARG=""
+            # 'continue' força o loop a rodar de novo AGORA, sem esperar 60s
+            continue 
+        else
+            echo ">>> ERRO CRÍTICO: Bloqueio persiste mesmo sem cookies. O IP pode estar banido temporariamente." | tee -a "$LOG_FILE"
+            echo ">>> Detalhe do erro: $CHECK_OUTPUT" | tee -a "$LOG_FILE"
+            echo ">>> Aguardando 60s para esfriar..."
+            sleep 60
+        fi
     else
-        # Caso padrão: Live não encontrada ou canal offline (False/NA)
-        echo ">>> Live não iniciada (Status retornado: $CLEAN_OUTPUT). Aguardando 60s..."
+        # 3. Caso padrão: Live não encontrada ou canal offline (False/NA)
+        echo ">>> Live não iniciada (Status: $CLEAN_OUTPUT). Aguardando 60s..."
         sleep 60
     fi
 done

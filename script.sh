@@ -1,125 +1,110 @@
 #!/bin/bash
-# Script de monitoramento e gravação de Lives do YouTube com Diagnóstico
-# Versão: Auto-Correction para Cookies Expirados
 
-# --- CONFIGURAÇÕES E VARIÁVEIS ---
-URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
-NOME_DO_REMOTO="${NOME_DO_REMOTO:-MeuDrive}"
-PASTA_NO_DRIVE="${PASTA_NO_DRIVE:-LivesCoisaDeNerd}"
+# --- CONFIGURAÇÕES ---
+# Define horário limite (22:30 no horário do Brasil)
+HORA_LIMITE="2230"
 DIRETORIO_TEMPORARIO="/tmp/gravacao"
-PASTA_LOGS="${PASTA_LOGS:-LogsGravacao}"
-NOME_ARQUIVO_FORMATO="${NOME_ARQUIVO_FORMATO:-%(uploader)s - %(upload_date)s - %(title)s.%(ext)s}"
 LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
+NOME_ARQUIVO="%(upload_date)s - %(title)s.%(ext)s"
 
-# Configuração do Rclone (com --transfers 4 para agilizar)
-RCLONE_CONFIG_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4" 
-COOKIE_FILE="$HOME/yt-cookies.txt"
+# Configuração Anti-Bot (Finge ser um Chrome no Windows)
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+REFERER="https://www.youtube.com/"
 
-# Cria diretório temporário
+# Configurações do Rclone
+RCLONE_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4 --drive-chunk-size 32M"
+
 mkdir -p "$DIRETORIO_TEMPORARIO"
 
-# Inicia log
-echo ">>> Iniciando monitoramento: $(date)" | tee -a "$LOG_FILE"
+# Função para enviar WhatsApp (Só se as chaves existirem)
+enviar_whatsapp() {
+    local MENSAGEM="$1"
+    if [[ -n "$TWILIO_ACCOUNT_SID" && -n "$WHATSAPP_API_KEY" ]]; then
+        curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
+        --data-urlencode "To=${WHATSAPP_RECEIVER_NUMBER_1}" \
+        --data-urlencode "From=${WHATSAPP_SENDER_NUMBER}" \
+        --data-urlencode "Body=$MENSAGEM" \
+        -u "${TWILIO_ACCOUNT_SID}:${WHATSAPP_API_KEY}" \
+        --silent > /dev/null
+        echo ">>> WhatsApp enviado: $MENSAGEM"
+    fi
+}
 
-# --- CONFIGURAÇÃO DE COOKIES ---
-COOKIE_ARG=""
-if [ -f "$COOKIE_FILE" ]; then
-    echo ">>> Usando arquivo de cookies para autenticação inicial." | tee -a "$LOG_FILE"
-    COOKIE_ARG="--cookies $COOKIE_FILE"
-else
-    echo ">>> AVISO: Arquivo de cookies não encontrado. Tentando sem autenticação." | tee -a "$LOG_FILE"
-fi
+echo ">>> Iniciando monitoramento em $(date)" | tee -a "$LOG_FILE"
 
-# --- LOOP DE MONITORAMENTO (POLLING ROBUSTO) ---
-# Tenta detectar a live por 2 horas (120 tentativas de 1 minuto)
-MAX_RETRIES=120
-FOUND_LIVE=0
-
-echo ">>> Verificando status da live a cada 60 segundos..." | tee -a "$LOG_FILE"
-
-for ((i=1; i<=MAX_RETRIES; i++)); do
-    echo ">>> [Tentativa $i/$MAX_RETRIES] Consultando YouTube..."
-
-    # Captura a saída (stdout) e erros (stderr) combinados
-    # --print is_live retorna "True", "False" ou "NA"
-    CHECK_OUTPUT=$(yt-dlp $COOKIE_ARG --print is_live "$URL_DO_CANAL" 2>&1)
+# --- LOOP DE MONITORAMENTO ---
+while true; do
+    # 1. Verifica horário atual (Formato HHMM, ex: 1930)
+    HORA_ATUAL=$(date +%H%M)
     
-    # Limpa a saída (remove quebras de linha e espaços extras) para comparação segura
-    CLEAN_OUTPUT=$(echo "$CHECK_OUTPUT" | tr -d '\n' | tr -d '\r' | sed 's/ //g')
-
-    # --- Lógica de Decisão e Recuperação ---
-    
-    # 1. Sucesso: Live encontrada
-    if [[ "$CLEAN_OUTPUT" == *"True"* ]]; then
-        echo ">>> 🔴 LIVE DETECTADA! (Status: $CLEAN_OUTPUT). Iniciando gravação..." | tee -a "$LOG_FILE"
-        FOUND_LIVE=1
+    # 2. Se passou das 22:30, encerra o script
+    if [ "$HORA_ATUAL" -ge "$HORA_LIMITE" ]; then
+        echo ">>> Horário limite ($HORA_LIMITE) atingido. Encerrando sem gravações." | tee -a "$LOG_FILE"
         break
     fi
 
-    # 2. Erro de Acesso (Cookies podres ou Bloqueio)
-    # Detecta "Sign in", "cookies are no longer valid", "bot", ou erro 429
-    if [[ "$CHECK_OUTPUT" == *"cookies are no longer valid"* ]] || [[ "$CHECK_OUTPUT" == *"Sign in"* ]] || [[ "$CHECK_OUTPUT" == *"bot"* ]] || [[ "$CHECK_OUTPUT" == *"429"* ]]; then
-        echo ">>> ⚠️  ALERTA: Problema de acesso detectado." | tee -a "$LOG_FILE"
+    echo ">>> [$(date +%H:%M:%S)] Verificando se a live está ON..."
+
+    # 3. Verifica se tem cookies
+    COOKIE_CMD=""
+    if [ -f "$HOME/yt-cookies.txt" ]; then
+        COOKIE_CMD="--cookies $HOME/yt-cookies.txt"
+    fi
+
+    # 4. Pergunta ao YouTube se está ao vivo (retorna True ou False/Erro)
+    # Usamos flags extras para evitar bloqueios
+    STATUS=$(yt-dlp $COOKIE_CMD \
+        --user-agent "$USER_AGENT" \
+        --referer "$REFERER" \
+        --print "%(is_live)s" \
+        "$URL_DO_CANAL" 2>&1)
+
+    # 5. Se encontrou a Live
+    if [[ "$STATUS" == *"True"* ]]; then
+        echo ">>> 🔴 LIVE DETECTADA! INICIANDO GRAVAÇÃO..." | tee -a "$LOG_FILE"
+        enviar_whatsapp "🔴 A Live do Coisa de Nerd começou! Gravando..."
+
+        # Comando de gravação (Robusto contra quedas)
+        yt-dlp $COOKIE_CMD \
+            --user-agent "$USER_AGENT" \
+            --live-from-start \
+            --wait-for-video 15 \
+            --retries 50 \
+            --fragment-retries 50 \
+            -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+            --merge-output-format mp4 \
+            -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO" \
+            "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
         
-        if [ -n "$COOKIE_ARG" ]; then
-            echo ">>> DIAGNÓSTICO: Os cookies atuais parecem inválidos ou expirados." | tee -a "$LOG_FILE"
-            echo ">>> AÇÃO: Desativando cookies e tentando novamente IMEDIATAMENTE (Fallback Mode)..." | tee -a "$LOG_FILE"
-            COOKIE_ARG=""
-            # 'continue' força o loop a rodar de novo AGORA, sem esperar 60s
-            continue 
+        EXIT_CODE=${PIPESTATUS[0]}
+
+        if [ $EXIT_CODE -eq 0 ]; then
+            echo ">>> Gravação concluída. Iniciando Upload..." | tee -a "$LOG_FILE"
+            enviar_whatsapp "✅ Gravação concluída. Subindo para o Drive..."
+            
+            # Upload para o Drive
+            rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_FLAGS \
+                --include "*.mp4" --include "*.mkv" --log-file="$LOG_FILE"
+            
+            enviar_whatsapp "📁 Vídeo salvo no Drive com sucesso!"
         else
-            echo ">>> ERRO CRÍTICO: Bloqueio persiste mesmo sem cookies. O IP pode estar banido temporariamente." | tee -a "$LOG_FILE"
-            echo ">>> Detalhe do erro: $CHECK_OUTPUT" | tee -a "$LOG_FILE"
-            echo ">>> Aguardando 60s para esfriar..."
-            sleep 60
+            echo ">>> Erro na gravação ou live interrompida." | tee -a "$LOG_FILE"
+            # Salva o log de erro no drive
+            rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_$(date +%Y%m%d).log" $RCLONE_FLAGS
         fi
+        
+        # Sai do loop após gravar (para não tentar gravar a mesma live 2x)
+        break
+
+    elif [[ "$STATUS" == *"Sign in"* ]] || [[ "$STATUS" == *"429"* ]]; then
+        echo ">>> ⚠️  Alerta: YouTube bloqueou o pedido temporariamente."
+        # Se bloquear, espera mais tempo (2 min)
+        sleep 120
     else
-        # 3. Caso padrão: Live não encontrada ou canal offline (False/NA)
-        echo ">>> Live não iniciada (Status: $CLEAN_OUTPUT). Aguardando 60s..."
+        # Se não tem live, espera 60 segundos e tenta de novo
+        echo ">>> Nada ainda. Aguardando..."
         sleep 60
     fi
 done
 
-# --- GRAVAÇÃO ---
-if [ $FOUND_LIVE -eq 1 ]; then
-    echo ">>> Iniciando yt-dlp..." | tee -a "$LOG_FILE"
-    
-    # --live-from-start: Tenta pegar o início do buffer
-    # --fixup never: Evita processamento demorado no final
-    yt-dlp $COOKIE_ARG \
-        --live-from-start \
-        --ignore-errors \
-        --merge-output-format mkv \
-        -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" \
-        "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
-    
-    GRAVACAO_STATUS=${PIPESTATUS[0]}
-else
-    echo ">>> Tempo limite de monitoramento esgotado (2h). Nenhuma live iniciada." | tee -a "$LOG_FILE"
-    
-    # Salva o log de "sem live" para auditoria
-    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sem_live_$(date +%Y-%m-%d).log" $RCLONE_CONFIG_FLAGS
-    exit 0
-fi
-
-# --- UPLOAD ---
-if [ $GRAVACAO_STATUS -eq 0 ]; then
-    echo ">>> Gravação finalizada com sucesso. Iniciando Upload para o Drive..." | tee -a "$LOG_FILE"
-    
-    # Move os vídeos
-    rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_CONFIG_FLAGS \
-        --include "*.mp4" --include "*.mkv" --include "*.webm" \
-        --delete-empty-src-dirs \
-        --progress 2>&1 | tee -a "$LOG_FILE"
-
-    echo ">>> Upload dos vídeos concluído. Salvando Log final..."
-    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sucesso_$(date +%Y-%m-%d_%H-%M-%S).log" $RCLONE_CONFIG_FLAGS
-    
-    echo ">>> Processo TOTAL concluído com sucesso."
-else
-    echo ">>> ❌ ERRO: O yt-dlp encerrou com erro (Código $GRAVACAO_STATUS)." | tee -a "$LOG_FILE"
-    
-    # Salva o log de erro
-    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_gravacao_$(date +%Y-%m-%d).log" $RCLONE_CONFIG_FLAGS
-    exit 1
-fi
+echo ">>> Processo finalizado."

@@ -1,22 +1,24 @@
-name: Gravar Live
+name: Gravar Live Nerd
 
 on:
   schedule:
-    - cron: '0 21 * * 5'
-    - cron: '0 21 * * 6'
-    - cron: '0 21 * * 0'
-  workflow_dispatch:
+    # 21:50 UTC equivale a 18:50 Horário de Brasília
+    # Roda Sexta(5), Sábado(6) e Domingo(0)
+    - cron: '50 21 * * 5,6,0'
+  workflow_dispatch: # Permite rodar manualmente clicando no botão
 
 jobs:
   gravar:
-    timeout-minutes: 360
     runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 horas de limite máximo
+    
     env:
+      TZ: 'America/Sao_Paulo' # Força o horário do sistema para Brasil
       URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
       NOME_DO_REMOTO: 'MeuDrive'
       PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
       PASTA_LOGS: 'LogsGravacao'
-      NOME_ARQUIVO_FORMATO: '%(uploader)s - %(upload_date)s - %(title)s.%(ext)s'
+      # Segredos
       YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
       RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
       WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
@@ -28,40 +30,28 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v3
 
-      - name: Instalar dependências do sistema
+      - name: Instalar dependências (yt-dlp e ffmpeg)
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3 python3-pip curl
-
-      - name: Instalar rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-          rclone version
-
-      - name: Instalar yt-dlp
-        run: |
+          
+          # Instala o yt-dlp mais recente
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          yt-dlp --version
+          
+          # Instala rclone
+          curl https://rclone.org/install.sh | sudo bash
 
-      - name: Criar configuração do rclone
+      - name: Configurar Rclone
         run: |
           mkdir -p ~/.config/rclone
           echo "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
 
-      - name: Criar arquivo de cookies do YouTube
+      - name: Configurar Cookies
         if: ${{ env.YOUTUBE_COOKIES != '' }}
-        run: |
-          echo "$YOUTUBE_COOKIES" > $HOME/yt-cookies.txt
+        run: echo "$YOUTUBE_COOKIES" > $HOME/yt-cookies.txt
 
-      - name: Enviar notificação para WhatsApp
-        if: ${{ env.TWILIO_ACCOUNT_SID != '' && env.WHATSAPP_API_KEY != '' && env.WHATSAPP_SENDER_NUMBER != '' && env.WHATSAPP_RECEIVER_NUMBER_1 != '' }}
+      - name: Rodar Script de Gravação
         run: |
-          curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
-            --data-urlencode "To=${WHATSAPP_RECEIVER_NUMBER_1}" \
-            --data-urlencode "From=${WHATSAPP_SENDER_NUMBER}" \
-            --data-urlencode "Body=Iniciando a gravação da live!" \
-            -u "${TWILIO_ACCOUNT_SID}:${WHATSAPP_API_KEY}"
-
-      - name: Rodar script de gravação
-        run: bash ./script.sh
+          chmod +x ./script.sh
+          ./script.sh

@@ -6,22 +6,18 @@ DIRETORIO_TEMPORARIO="/tmp/gravacao"
 LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
 NOME_ARQUIVO="%(upload_date)s - %(title)s.%(ext)s"
 
-# User Agents rotativos (para variar a identidade)
+# User Agents
 UA_LIST=(
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
 )
-# Seleciona um UA aleatório no início
 USER_AGENT=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
 REFERER="https://www.google.com/"
 
-# Rclone
 RCLONE_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4 --drive-chunk-size 32M"
 
 mkdir -p "$DIRETORIO_TEMPORARIO"
-
-# Controle de Cookies (Começa ligado)
 USAR_COOKIES=true
 
 # Função WhatsApp
@@ -39,7 +35,6 @@ enviar_whatsapp() {
 
 echo ">>> Iniciando monitoramento em $(date). UA: $USER_AGENT" | tee -a "$LOG_FILE"
 
-# --- LOOP ---
 while true; do
     HORA_ATUAL=$(date +%H%M)
     
@@ -48,67 +43,53 @@ while true; do
         break
     fi
 
-    # Monta comando de cookie
     COOKIE_CMD=""
     if [ "$USAR_COOKIES" = true ] && [ -f "$HOME/yt-cookies.txt" ]; then
         COOKIE_CMD="--cookies $HOME/yt-cookies.txt"
     fi
 
-    echo ">>> [$(date +%H:%M:%S)] Verificando Live (Cookies: $USAR_COOKIES)..."
+    echo ">>> [$(date +%H:%M:%S)] Verificando Live..."
 
-    # Verificação
-    STATUS=$(yt-dlp $COOKIE_CMD \
-        --user-agent "$USER_AGENT" \
-        --referer "$REFERER" \
-        --print "%(is_live)s" \
-        "$URL_DO_CANAL" 2>&1)
+    STATUS=$(yt-dlp $COOKIE_CMD --user-agent "$USER_AGENT" --referer "$REFERER" --print "%(is_live)s" "$URL_DO_CANAL" 2>&1)
 
-    # --- LÓGICA DE DECISÃO ---
     if [[ "$STATUS" == *"True"* ]]; then
         echo ">>> 🔴 LIVE ON! GRAVANDO..." | tee -a "$LOG_FILE"
-        enviar_whatsapp "🔴 Live Nerd ON! Gravando..."
+        enviar_whatsapp "🔴 Live ON! Gravando..."
 
+        # Tenta gravar (com --fixup never para evitar travamentos no final)
         yt-dlp $COOKIE_CMD \
             --user-agent "$USER_AGENT" \
             --live-from-start \
             --wait-for-video 15 \
             --retries 50 \
+            --fixup never \
             -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
             --merge-output-format mp4 \
             -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO" \
             "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
         
-        EXIT_CODE=${PIPESTATUS[0]}
-
-        if [ $EXIT_CODE -eq 0 ]; then
-            echo ">>> Sucesso! Subindo..." | tee -a "$LOG_FILE"
+        # --- AQUI ESTÁ A CORREÇÃO DE SEGURANÇA ---
+        # Verifica se o arquivo existe na pasta, IGNORANDO O CÓDIGO DE ERRO DO YT-DLP
+        if ls "$DIRETORIO_TEMPORARIO"/*.mp4 1> /dev/null 2>&1; then
+            echo ">>> VÍDEO ENCONTRADO! Iniciando Upload de emergência..." | tee -a "$LOG_FILE"
+            enviar_whatsapp "✅ Vídeo baixado. Subindo para o Drive..."
+            
             rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_FLAGS --include "*.mp4" --log-file="$LOG_FILE"
-            enviar_whatsapp "✅ Gravado e Salvo!"
-            break # Sai do loop após sucesso
+            
+            echo ">>> Upload finalizado." | tee -a "$LOG_FILE"
+            enviar_whatsapp "📁 Salvo no Drive com sucesso!"
+            break 
         else
-            echo ">>> Falha na gravação." | tee -a "$LOG_FILE"
-            # Se falhou gravando, remove cookies para a próxima tentativa imediata
+            echo ">>> ❌ ERRO CRÍTICO: Nenhum arquivo MP4 foi gerado." | tee -a "$LOG_FILE"
             USAR_COOKIES=false
             sleep 10
         fi
 
-    # --- AQUI ESTÁ A CORREÇÃO PRINCIPAL ---
     elif [[ "$STATUS" == *"Sign in"* ]] || [[ "$STATUS" == *"bot"* ]] || [[ "$STATUS" == *"429"* ]] || [[ "$STATUS" == *"cookies"* ]]; then
-        echo ">>> ⚠️  BLOQUEIO DETECTADO ($STATUS)!" | tee -a "$LOG_FILE"
-        
-        if [ "$USAR_COOKIES" = true ]; then
-            echo ">>> Ação: Desativando cookies (eles podem estar queimados)."
-            USAR_COOKIES=false
-            echo ">>> Aguardando 30s para tentar sem cookies..."
-            sleep 30
-        else
-            echo ">>> Bloqueio persiste mesmo sem cookies."
-            echo ">>> Ação: Aguardando 5 MINUTOS para esfriar o IP..."
-            sleep 300
-        fi
-        
+        echo ">>> ⚠️  BLOQUEIO ($STATUS). Tentando sem cookies..."
+        USAR_COOKIES=false
+        sleep 30
     else
-        # Sem live. Espera tempo ALEATÓRIO (entre 60s e 90s) para evitar padrão robótico
         WAIT_TIME=$((60 + RANDOM % 30))
         echo ">>> Nada ainda. Aguardando ${WAIT_TIME}s..."
         sleep $WAIT_TIME

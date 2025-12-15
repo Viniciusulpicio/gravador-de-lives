@@ -1,22 +1,30 @@
 #!/bin/bash
 
 # --- CONFIGURAÇÕES ---
-# Define horário limite (22:30 no horário do Brasil)
 HORA_LIMITE="2230"
 DIRETORIO_TEMPORARIO="/tmp/gravacao"
 LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
 NOME_ARQUIVO="%(upload_date)s - %(title)s.%(ext)s"
 
-# Configuração Anti-Bot (Finge ser um Chrome no Windows)
-USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-REFERER="https://www.youtube.com/"
+# User Agents rotativos (para variar a identidade)
+UA_LIST=(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+)
+# Seleciona um UA aleatório no início
+USER_AGENT=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
+REFERER="https://www.google.com/"
 
-# Configurações do Rclone
+# Rclone
 RCLONE_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4 --drive-chunk-size 32M"
 
 mkdir -p "$DIRETORIO_TEMPORARIO"
 
-# Função para enviar WhatsApp (Só se as chaves existirem)
+# Controle de Cookies (Começa ligado)
+USAR_COOKIES=true
+
+# Função WhatsApp
 enviar_whatsapp() {
     local MENSAGEM="$1"
     if [[ -n "$TWILIO_ACCOUNT_SID" && -n "$WHATSAPP_API_KEY" ]]; then
@@ -26,51 +34,45 @@ enviar_whatsapp() {
         --data-urlencode "Body=$MENSAGEM" \
         -u "${TWILIO_ACCOUNT_SID}:${WHATSAPP_API_KEY}" \
         --silent > /dev/null
-        echo ">>> WhatsApp enviado: $MENSAGEM"
     fi
 }
 
-echo ">>> Iniciando monitoramento em $(date)" | tee -a "$LOG_FILE"
+echo ">>> Iniciando monitoramento em $(date). UA: $USER_AGENT" | tee -a "$LOG_FILE"
 
-# --- LOOP DE MONITORAMENTO ---
+# --- LOOP ---
 while true; do
-    # 1. Verifica horário atual (Formato HHMM, ex: 1930)
     HORA_ATUAL=$(date +%H%M)
     
-    # 2. Se passou das 22:30, encerra o script
     if [ "$HORA_ATUAL" -ge "$HORA_LIMITE" ]; then
-        echo ">>> Horário limite ($HORA_LIMITE) atingido. Encerrando sem gravações." | tee -a "$LOG_FILE"
+        echo ">>> Horário limite ($HORA_LIMITE) atingido. Encerrando." | tee -a "$LOG_FILE"
         break
     fi
 
-    echo ">>> [$(date +%H:%M:%S)] Verificando se a live está ON..."
-
-    # 3. Verifica se tem cookies
+    # Monta comando de cookie
     COOKIE_CMD=""
-    if [ -f "$HOME/yt-cookies.txt" ]; then
+    if [ "$USAR_COOKIES" = true ] && [ -f "$HOME/yt-cookies.txt" ]; then
         COOKIE_CMD="--cookies $HOME/yt-cookies.txt"
     fi
 
-    # 4. Pergunta ao YouTube se está ao vivo (retorna True ou False/Erro)
-    # Usamos flags extras para evitar bloqueios
+    echo ">>> [$(date +%H:%M:%S)] Verificando Live (Cookies: $USAR_COOKIES)..."
+
+    # Verificação
     STATUS=$(yt-dlp $COOKIE_CMD \
         --user-agent "$USER_AGENT" \
         --referer "$REFERER" \
         --print "%(is_live)s" \
         "$URL_DO_CANAL" 2>&1)
 
-    # 5. Se encontrou a Live
+    # --- LÓGICA DE DECISÃO ---
     if [[ "$STATUS" == *"True"* ]]; then
-        echo ">>> 🔴 LIVE DETECTADA! INICIANDO GRAVAÇÃO..." | tee -a "$LOG_FILE"
-        enviar_whatsapp "🔴 A Live do Coisa de Nerd começou! Gravando..."
+        echo ">>> 🔴 LIVE ON! GRAVANDO..." | tee -a "$LOG_FILE"
+        enviar_whatsapp "🔴 Live Nerd ON! Gravando..."
 
-        # Comando de gravação (Robusto contra quedas)
         yt-dlp $COOKIE_CMD \
             --user-agent "$USER_AGENT" \
             --live-from-start \
             --wait-for-video 15 \
             --retries 50 \
-            --fragment-retries 50 \
             -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
             --merge-output-format mp4 \
             -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO" \
@@ -79,32 +81,36 @@ while true; do
         EXIT_CODE=${PIPESTATUS[0]}
 
         if [ $EXIT_CODE -eq 0 ]; then
-            echo ">>> Gravação concluída. Iniciando Upload..." | tee -a "$LOG_FILE"
-            enviar_whatsapp "✅ Gravação concluída. Subindo para o Drive..."
-            
-            # Upload para o Drive
-            rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_FLAGS \
-                --include "*.mp4" --include "*.mkv" --log-file="$LOG_FILE"
-            
-            enviar_whatsapp "📁 Vídeo salvo no Drive com sucesso!"
+            echo ">>> Sucesso! Subindo..." | tee -a "$LOG_FILE"
+            rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_FLAGS --include "*.mp4" --log-file="$LOG_FILE"
+            enviar_whatsapp "✅ Gravado e Salvo!"
+            break # Sai do loop após sucesso
         else
-            echo ">>> Erro na gravação ou live interrompida." | tee -a "$LOG_FILE"
-            # Salva o log de erro no drive
-            rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_$(date +%Y%m%d).log" $RCLONE_FLAGS
+            echo ">>> Falha na gravação." | tee -a "$LOG_FILE"
+            # Se falhou gravando, remove cookies para a próxima tentativa imediata
+            USAR_COOKIES=false
+            sleep 10
+        fi
+
+    # --- AQUI ESTÁ A CORREÇÃO PRINCIPAL ---
+    elif [[ "$STATUS" == *"Sign in"* ]] || [[ "$STATUS" == *"bot"* ]] || [[ "$STATUS" == *"429"* ]] || [[ "$STATUS" == *"cookies"* ]]; then
+        echo ">>> ⚠️  BLOQUEIO DETECTADO ($STATUS)!" | tee -a "$LOG_FILE"
+        
+        if [ "$USAR_COOKIES" = true ]; then
+            echo ">>> Ação: Desativando cookies (eles podem estar queimados)."
+            USAR_COOKIES=false
+            echo ">>> Aguardando 30s para tentar sem cookies..."
+            sleep 30
+        else
+            echo ">>> Bloqueio persiste mesmo sem cookies."
+            echo ">>> Ação: Aguardando 5 MINUTOS para esfriar o IP..."
+            sleep 300
         fi
         
-        # Sai do loop após gravar (para não tentar gravar a mesma live 2x)
-        break
-
-    elif [[ "$STATUS" == *"Sign in"* ]] || [[ "$STATUS" == *"429"* ]]; then
-        echo ">>> ⚠️  Alerta: YouTube bloqueou o pedido temporariamente."
-        # Se bloquear, espera mais tempo (2 min)
-        sleep 120
     else
-        # Se não tem live, espera 60 segundos e tenta de novo
-        echo ">>> Nada ainda. Aguardando..."
-        sleep 60
+        # Sem live. Espera tempo ALEATÓRIO (entre 60s e 90s) para evitar padrão robótico
+        WAIT_TIME=$((60 + RANDOM % 30))
+        echo ">>> Nada ainda. Aguardando ${WAIT_TIME}s..."
+        sleep $WAIT_TIME
     fi
 done
-
-echo ">>> Processo finalizado."

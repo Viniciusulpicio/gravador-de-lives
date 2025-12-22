@@ -1,97 +1,95 @@
 #!/bin/bash
+# Script de Gravação Blindado v3
+# Correção: Faz upload mesmo se o yt-dlp der erro no final (comum em lives)
 
 # --- CONFIGURAÇÕES ---
-HORA_LIMITE="2230"
+URL_DO_CANAL="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
+NOME_DO_REMOTO="${NOME_DO_REMOTO:-MeuDrive}"
+PASTA_NO_DRIVE="${PASTA_NO_DRIVE:-LivesCoisaDeNerd}"
 DIRETORIO_TEMPORARIO="/tmp/gravacao"
+PASTA_LOGS="${PASTA_LOGS:-LogsGravacao}"
+NOME_ARQUIVO_FORMATO="${NOME_ARQUIVO_FORMATO:-%(uploader)s - %(upload_date)s - %(title)s.%(ext)s}"
 LOG_FILE="$DIRETORIO_TEMPORARIO/gravacao.log"
-NOME_ARQUIVO="%(upload_date)s - %(title)s.%(ext)s"
-
-# User Agents
-UA_LIST=(
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
-)
-USER_AGENT=${UA_LIST[$RANDOM % ${#UA_LIST[@]}]}
-REFERER="https://www.google.com/"
-
-RCLONE_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4 --drive-chunk-size 32M"
+RCLONE_CONFIG_FLAGS="--config $HOME/.config/rclone/rclone.conf --transfers 4" 
+COOKIE_FILE="$HOME/yt-cookies.txt"
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 mkdir -p "$DIRETORIO_TEMPORARIO"
-USAR_COOKIES=true
+echo ">>> Iniciando script: $(date)" | tee -a "$LOG_FILE"
 
-# Função WhatsApp
-enviar_whatsapp() {
-    local MENSAGEM="$1"
-    if [[ -n "$TWILIO_ACCOUNT_SID" && -n "$WHATSAPP_API_KEY" ]]; then
-        curl -X POST "https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json" \
-        --data-urlencode "To=${WHATSAPP_RECEIVER_NUMBER_1}" \
-        --data-urlencode "From=${WHATSAPP_SENDER_NUMBER}" \
-        --data-urlencode "Body=$MENSAGEM" \
-        -u "${TWILIO_ACCOUNT_SID}:${WHATSAPP_API_KEY}" \
-        --silent > /dev/null
-    fi
-}
+# --- CONFIGURAÇÃO DE COOKIES ---
+COOKIE_ARG=""
+if [ -f "$COOKIE_FILE" ]; then
+    echo ">>> Usando arquivo de cookies." | tee -a "$LOG_FILE"
+    COOKIE_ARG="--cookies $COOKIE_FILE"
+else
+    echo ">>> AVISO: Sem cookies. Risco de bloqueio." | tee -a "$LOG_FILE"
+fi
 
-echo ">>> Iniciando monitoramento em $(date). UA: $USER_AGENT" | tee -a "$LOG_FILE"
+# --- 1. MONITORAMENTO ---
+MAX_RETRIES=120
+FOUND_LIVE=0
 
-while true; do
-    HORA_ATUAL=$(date +%H%M)
-    
-    if [ "$HORA_ATUAL" -ge "$HORA_LIMITE" ]; then
-        echo ">>> Horário limite ($HORA_LIMITE) atingido. Encerrando." | tee -a "$LOG_FILE"
+echo ">>> Procurando live..." | tee -a "$LOG_FILE"
+
+for ((i=1; i<=MAX_RETRIES; i++)); do
+    CHECK_OUTPUT=$(yt-dlp $COOKIE_ARG --user-agent "$USER_AGENT" --print is_live "$URL_DO_CANAL" 2>&1)
+    CLEAN_OUTPUT=$(echo "$CHECK_OUTPUT" | tr -d '\n' | tr -d '\r' | sed 's/ //g')
+
+    if [[ "$CLEAN_OUTPUT" == *"True"* ]]; then
+        echo ">>> 🔴 LIVE ENCONTRADA! Iniciando..." | tee -a "$LOG_FILE"
+        FOUND_LIVE=1
         break
-    fi
-
-    COOKIE_CMD=""
-    if [ "$USAR_COOKIES" = true ] && [ -f "$HOME/yt-cookies.txt" ]; then
-        COOKIE_CMD="--cookies $HOME/yt-cookies.txt"
-    fi
-
-    echo ">>> [$(date +%H:%M:%S)] Verificando Live..."
-
-    STATUS=$(yt-dlp $COOKIE_CMD --user-agent "$USER_AGENT" --referer "$REFERER" --print "%(is_live)s" "$URL_DO_CANAL" 2>&1)
-
-    if [[ "$STATUS" == *"True"* ]]; then
-        echo ">>> 🔴 LIVE ON! GRAVANDO..." | tee -a "$LOG_FILE"
-        enviar_whatsapp "🔴 Live ON! Gravando..."
-
-        # Tenta gravar (com --fixup never para evitar travamentos no final)
-        yt-dlp $COOKIE_CMD \
-            --user-agent "$USER_AGENT" \
-            --live-from-start \
-            --wait-for-video 15 \
-            --retries 50 \
-            --fixup never \
-            -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
-            --merge-output-format mp4 \
-            -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO" \
-            "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
-        
-        # --- AQUI ESTÁ A CORREÇÃO DE SEGURANÇA ---
-        # Verifica se o arquivo existe na pasta, IGNORANDO O CÓDIGO DE ERRO DO YT-DLP
-        if ls "$DIRETORIO_TEMPORARIO"/*.mp4 1> /dev/null 2>&1; then
-            echo ">>> VÍDEO ENCONTRADO! Iniciando Upload de emergência..." | tee -a "$LOG_FILE"
-            enviar_whatsapp "✅ Vídeo baixado. Subindo para o Drive..."
-            
-            rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_FLAGS --include "*.mp4" --log-file="$LOG_FILE"
-            
-            echo ">>> Upload finalizado." | tee -a "$LOG_FILE"
-            enviar_whatsapp "📁 Salvo no Drive com sucesso!"
-            break 
-        else
-            echo ">>> ❌ ERRO CRÍTICO: Nenhum arquivo MP4 foi gerado." | tee -a "$LOG_FILE"
-            USAR_COOKIES=false
-            sleep 10
-        fi
-
-    elif [[ "$STATUS" == *"Sign in"* ]] || [[ "$STATUS" == *"bot"* ]] || [[ "$STATUS" == *"429"* ]] || [[ "$STATUS" == *"cookies"* ]]; then
-        echo ">>> ⚠️  BLOQUEIO ($STATUS). Tentando sem cookies..."
-        USAR_COOKIES=false
-        sleep 30
+    elif [[ "$CHECK_OUTPUT" == *"cookies are no longer valid"* ]]; then
+        echo ">>> ❌ COOKIES EXPIRADOS. Tentando sem cookies..." | tee -a "$LOG_FILE"
+        COOKIE_ARG=""
+        continue 
+    elif [[ "$CHECK_OUTPUT" == *"Sign in"* ]] || [[ "$CHECK_OUTPUT" == *"bot"* ]]; then
+        echo ">>> ⚠️  BLOQUEIO DETECTADO. Esfriando 60s..." | tee -a "$LOG_FILE"
+        sleep 60
     else
-        WAIT_TIME=$((60 + RANDOM % 30))
-        echo ">>> Nada ainda. Aguardando ${WAIT_TIME}s..."
-        sleep $WAIT_TIME
+        echo ">>> [$i/$MAX_RETRIES] Sem live. Aguardando 60s..."
+        sleep 60
     fi
 done
+
+# --- 2. GRAVAÇÃO ---
+if [ $FOUND_LIVE -eq 1 ]; then
+    # Adicionamos --retries infinite e --fragment-retries infinite para evitar quebras de rede
+    yt-dlp $COOKIE_ARG \
+        --user-agent "$USER_AGENT" \
+        --live-from-start \
+        --retries infinite \
+        --fragment-retries infinite \
+        --ignore-errors \
+        --merge-output-format mkv \
+        -o "$DIRETORIO_TEMPORARIO/$NOME_ARQUIVO_FORMATO" \
+        "$URL_DO_CANAL" 2>&1 | tee -a "$LOG_FILE"
+    
+    # NÃO confiamos mais apenas no código de saída ($?) do yt-dlp
+else
+    echo ">>> Tempo esgotado (Monitoramento)." | tee -a "$LOG_FILE"
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sem_live_$(date +%Y-%m-%d).log" $RCLONE_CONFIG_FLAGS
+    exit 0
+fi
+
+# --- 3. VERIFICAÇÃO INTELIGENTE DE SUCESSO ---
+# Verificamos se existe algum arquivo de vídeo maior que 1KB na pasta
+VIDEO_CRIADO=$(find "$DIRETORIO_TEMPORARIO" -type f \( -name "*.mkv" -o -name "*.mp4" -o -name "*.webm" \) -size +1k | head -n 1)
+
+if [ -n "$VIDEO_CRIADO" ]; then
+    echo ">>> ✅ VÍDEO DETECTADO: $VIDEO_CRIADO" | tee -a "$LOG_FILE"
+    echo ">>> Iniciando Upload (mesmo se o yt-dlp reclamou)..." | tee -a "$LOG_FILE"
+    
+    rclone move "$DIRETORIO_TEMPORARIO" "$NOME_DO_REMOTO:$PASTA_NO_DRIVE" $RCLONE_CONFIG_FLAGS \
+        --include "*.mp4" --include "*.mkv" --include "*.webm" \
+        --delete-empty-src-dirs \
+        --progress 2>&1 | tee -a "$LOG_FILE"
+    
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/sucesso_$(date +%Y-%m-%d_%H-%M-%S).log" $RCLONE_CONFIG_FLAGS
+    echo ">>> Processo concluído com sucesso."
+else
+    echo ">>> ❌ ERRO CRÍTICO: O yt-dlp terminou mas NENHUM vídeo foi encontrado." | tee -a "$LOG_FILE"
+    rclone copy "$LOG_FILE" "$NOME_DO_REMOTO:$PASTA_LOGS/erro_gravacao_$(date +%Y-%m-%d).log" $RCLONE_CONFIG_FLAGS
+    exit 1
+fi

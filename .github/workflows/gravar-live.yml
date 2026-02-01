@@ -2,54 +2,47 @@ name: Gravar Live Nerd
 
 on:
   schedule:
-    # 21:50 UTC equivale a 18:50 Horário de Brasília
-    # Roda Sexta(5), Sábado(6) e Domingo(0)
     - cron: '50 21 * * 5,6,0'
-  workflow_dispatch: # Permite rodar manualmente clicando no botão
+  workflow_dispatch:
 
 jobs:
   gravar:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 horas de limite máximo
+    timeout-minutes: 360
     
     env:
-      TZ: 'America/Sao_Paulo' # Força o horário do sistema para Brasil
+      TZ: 'America/Sao_Paulo'
       URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
       NOME_DO_REMOTO: 'MeuDrive'
-      PASTA_NO_DRIVE: 'LivesCoisaDeNerd'
-      PASTA_LOGS: 'LogsGravacao'
-      # Segredos
-      YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-      RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
-      WHATSAPP_API_KEY: ${{ secrets.WHATSAPP_API_KEY }}
-      WHATSAPP_RECEIVER_NUMBER_1: ${{ secrets.WHATSAPP_RECEIVER_NUMBER_1 }}
-      WHATSAPP_SENDER_NUMBER: ${{ secrets.WHATSAPP_SENDER_NUMBER }}
-      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      FOLDER_ID: '1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl'
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
 
-      - name: Instalar dependências (yt-dlp e ffmpeg)
+      - name: Instalar dependências
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 python3-pip curl
-          
-          # Instala o yt-dlp mais recente
+          sudo apt-get install -y ffmpeg python3 curl
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          
-          # Instala rclone
           curl https://rclone.org/install.sh | sudo bash
 
-      - name: Configurar Rclone
-        run: |
-          mkdir -p ~/.config/rclone
-          echo "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+      - name: Setup Deno (Necessário para o yt-dlp)
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
 
-      - name: Configurar Cookies
-        if: ${{ env.YOUTUBE_COOKIES != '' }}
-        run: echo "$YOUTUBE_COOKIES" > $HOME/yt-cookies.txt
+      - name: Configurar Cookies e Rclone
+        run: |
+          # Escreve os cookies se o segredo existir
+          if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
+            echo "${{ secrets.YOUTUBE_COOKIES }}" > $HOME/yt-cookies.txt
+          fi
+          
+          # Configura o Rclone criando o arquivo manualmente
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
 
       - name: Rodar Script de Gravação
         run: |

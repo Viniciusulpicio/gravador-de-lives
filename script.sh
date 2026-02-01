@@ -1,67 +1,60 @@
 #!/bin/bash
 
-# --- CONFIGURAÇÕES ---
-URL_ALVO="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
-REMOTO="${NOME_DO_REMOTO:-MeuDrive}"
-FOLDER_ID="${FOLDER_ID:-1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl}"
+# --- VARIÁVEIS ---
+URL_ALVO="${URL_DO_CANAL}"
+REMOTE_NAME="${NOME_DO_REMOTO}"
+DRIVE_FOLDER="${FOLDER_ID}"
 TMP_DIR="/tmp/gravacao"
 LOG_FILE="$TMP_DIR/gravacao.log"
-COOKIE_FILE="$HOME/yt-cookies.txt"
-UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+COOKIE_PATH="$HOME/yt-cookies.txt"
+UA="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
 mkdir -p "$TMP_DIR"
-echo ">>> [$(date)] Iniciando Gravação" | tee -a "$LOG_FILE"
+echo ">>> [$(date)] Iniciando Script v5 (JS-Deno + iOS Client)" | tee -a "$LOG_FILE"
 
 # --- 1. DETECÇÃO DA LIVE ---
-MAX_RETRIES=120
-FOUND_LIVE=0
-VIDEO_ID=""
+# Usamos curl para pegar o ID sem alertar o sistema de bot do yt-dlp no início
+echo ">>> Buscando ID da live..." | tee -a "$LOG_FILE"
+VIDEO_ID=$(curl -sL "$URL_ALVO" | grep -oP '"videoId":"\K[^"]+' | head -n 1)
 
-for ((i=1; i<=MAX_RETRIES; i++)); do
-    # Tenta obter o ID via curl (mais resistente a bloqueios de bot)
-    VIDEO_ID=$(curl -sL "$URL_ALVO" | grep -oP '"videoId":"\K[^"]+' | head -n 1)
-    
-    if [ -n "$VIDEO_ID" ] && [ ${#VIDEO_ID} -eq 11 ]; then
-        echo ">>> [🔴 LIVE ONLINE] ID: $VIDEO_ID" | tee -a "$LOG_FILE"
-        FOUND_LIVE=1
-        break
-    else
-        echo ">>> [$i/$MAX_RETRIES] Aguardando live..."
-        sleep 60
-    fi
-done
-
-# --- 2. EXECUÇÃO DO YT-DLP ---
-if [ $FOUND_LIVE -eq 1 ]; then
-    URL_DIRETA="https://www.youtube.com/watch?v=$VIDEO_ID"
-    
-    # Adicionamos -f "best" para garantir que ele pegue o vídeo mesmo com problemas de n-challenge
-    yt-dlp \
-        --cookies "$COOKIE_FILE" \
-        --user-agent "$UA" \
-        --live-from-start \
-        --no-part \
-        --ignore-errors \
-        -f "bestvideo+bestaudio/best" \
-        --merge-output-format mkv \
-        -o "$TMP_DIR/%(title)s.%(ext)s" \
-        "$URL_DIRETA" 2>&1 | tee -a "$LOG_FILE"
-else
-    echo ">>> Nenhuma live detectada." | tee -a "$LOG_FILE"
+if [ -z "$VIDEO_ID" ]; then
+    echo ">>> ERRO: Não foi possível detectar a live. O canal pode estar offline." | tee -a "$LOG_FILE"
     exit 0
 fi
 
-# --- 3. UPLOAD VIA RCLONE ---
-# Usamos --config explicitamente para evitar que ele tente usar variáveis de ambiente zoadas
+URL_DIRETA="https://www.youtube.com/watch?v=$VIDEO_ID"
+echo ">>> Live detectada: $URL_DIRETA" | tee -a "$LOG_FILE"
+
+# --- 2. GRAVAÇÃO (BYPASS DE BOT) ---
+# O segredo aqui é o --js-runtimes "deno" e o client "ios"
+yt-dlp \
+    --cookies "$COOKIE_PATH" \
+    --js-runtimes "deno" \
+    --user-agent "$UA" \
+    --extractor-args "youtube:player-client=ios,web" \
+    --live-from-start \
+    --no-part \
+    --ignore-errors \
+    -f "bestvideo+bestaudio/best" \
+    --merge-output-format mkv \
+    -o "$TMP_DIR/%(title)s.%(ext)s" \
+    "$URL_DIRETA" 2>&1 | tee -a "$LOG_FILE"
+
+# --- 3. UPLOAD ---
+echo ">>> Verificando arquivos para upload..." | tee -a "$LOG_FILE"
 if ls "$TMP_DIR"/*.{mkv,mp4,webm} >/dev/null 2>&1; then
-    echo ">>> Iniciando Upload..." | tee -a "$LOG_FILE"
+    echo ">>> Enviando para o Google Drive..." | tee -a "$LOG_FILE"
     
-    rclone move "$TMP_DIR" "$REMOTO:/" \
+    # O rclone move usando o ID da pasta específica
+    rclone move "$TMP_DIR" "$REMOTE_NAME:/" \
         --config "$HOME/.config/rclone/rclone.conf" \
-        --drive-root-folder-id "$FOLDER_ID" \
+        --drive-root-folder-id "$DRIVE_FOLDER" \
         --include "*.{mp4,mkv,webm}" \
+        --buffer-size 128M \
         --progress | tee -a "$LOG_FILE"
+else
+    echo ">>> Nenhum vídeo encontrado para upload." | tee -a "$LOG_FILE"
 fi
 
-# Salva o log no Drive
-rclone copy "$LOG_FILE" "$REMOTO:/" --config "$HOME/.config/rclone/rclone.conf" --drive-root-folder-id "$FOLDER_ID"
+# Envia o log final para a mesma pasta
+rclone copy "$LOG_FILE" "$REMOTE_NAME:/" --config "$HOME/.config/rclone/rclone.conf" --drive-root-folder-id "$DRIVE_FOLDER"

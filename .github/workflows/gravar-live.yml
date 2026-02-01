@@ -2,55 +2,51 @@ name: Gravar Live Nerd
 
 on:
   schedule:
-    # Roda Sexta, Sábado e Domingo às 18:50 (Horário de Brasília)
     - cron: '50 21 * * 5,6,0'
-  workflow_dispatch: # Permite rodar manualmente
+  workflow_dispatch:
 
 jobs:
   gravar:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # Limite de 6 horas do GitHub
+    timeout-minutes: 360
     
     env:
       TZ: 'America/Sao_Paulo'
       URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
       NOME_DO_REMOTO: 'MeuDrive'
-      # Coloquei o ID da pasta direto aqui para facilitar
       FOLDER_ID: '1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl'
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
 
-      - name: Instalar Dependências Sistema
+      - name: Instalar Dependências
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3 curl
-          # Instala yt-dlp estável
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          # Instala rclone
           curl https://rclone.org/install.sh | sudo bash
 
-      - name: Configurar Motor JS (Deno)
+      - name: Setup Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
 
-      - name: Preparar Arquivos de Configuração
+      - name: Preparar Configurações
         run: |
-          # Cria pasta de config do rclone
           mkdir -p ~/.config/rclone
-          # Escreve o segredo exatamente como está (Cuidado com espaços extras no Secret!)
-          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
+          # Remove possíveis espaços ou caracteres invisíveis que quebram o JSON
+          echo "${{ secrets.RCLONE_CONFIG }}" | tr -d '\r' > ~/.config/rclone/rclone.conf
           
-          # Se houver cookies, prepara o arquivo
           touch $HOME/yt-cookies.txt
           if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
-            echo "${{ secrets.YOUTUBE_COOKIES }}" > $HOME/yt-cookies.txt
+            echo "${{ secrets.YOUTUBE_COOKIES }}" | tr -d '\r' > $HOME/yt-cookies.txt
           fi
 
-      - name: Executar Script de Gravação
+      - name: Rodar Script
         run: |
           chmod +x ./script.sh
+          # Garante que o Deno está no PATH para o script
+          export PATH=$PATH:$(which deno)
           ./script.sh

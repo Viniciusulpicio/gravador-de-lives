@@ -16,7 +16,8 @@ while true; do
     echo ">>> [$(date)] Verificando a live no canal: $URL_ALVO" | tee -a "$LOG_FILE"
 
     yt-dlp \
-            --extractor-args "youtube:player-client=android" \
+            --cookies "$HOME/yt-cookies.txt" \
+            --extractor-args "youtube:player-client=web_safari,mweb,web" \
             --live-from-start \
             -f "bestvideo+bestaudio/best" \
             --merge-output-format mkv \

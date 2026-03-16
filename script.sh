@@ -17,7 +17,7 @@ while true; do
 
     yt-dlp \
             --cookies "$HOME/yt-cookies.txt" \
-            --extractor-args "youtube:player-client=android,mweb,tv" \
+            --extractor-args "youtube:player-client=web_safari,web" \
             --live-from-start \
             -f "bestvideo+bestaudio/best" \
             --merge-output-format mkv \

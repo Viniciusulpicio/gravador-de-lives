@@ -1,48 +1,48 @@
-name: Gravar Live Nerd
+# name: Gravar Live Nerd
 
-on:
-  schedule:
-    - cron: '50 21 * * 5,6,0'
-  workflow_dispatch:
+# on:
+#   schedule:
+#     - cron: '50 21 * * 5,6,0'
+#   workflow_dispatch:
 
-jobs:
-  gravar:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
+# jobs:
+#   gravar:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 360
     
-    env:
-      TZ: 'America/Sao_Paulo'
-      URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
-      NOME_DO_REMOTO: 'MeuDrive'
-      FOLDER_ID: '1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl'
+#     env:
+#       TZ: 'America/Sao_Paulo'
+#       URL_DO_CANAL: 'https://www.youtube.com/@republicacoisadenerd/live'
+#       NOME_DO_REMOTO: 'MeuDrive'
+#       FOLDER_ID: '1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl'
 
-    steps:
-      - name: Checkout código
-        uses: actions/checkout@v3
+#     steps:
+#       - name: Checkout código
+#         uses: actions/checkout@v3
 
-      - name: Instalar Dependências
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 curl nodejs
-          # Baixando a versão Nightly do yt-dlp (com as correções mais recentes anti-bloqueio)
-          sudo curl -L https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
-          curl https://rclone.org/install.sh | sudo bash
+#       - name: Instalar Dependências
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y ffmpeg python3 curl nodejs
+#           # Baixando a versão Nightly do yt-dlp (com as correções mais recentes anti-bloqueio)
+#           sudo curl -L https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+#           sudo chmod a+rx /usr/local/bin/yt-dlp
+#           curl https://rclone.org/install.sh | sudo bash
 
-      - name: Preparar Configurações
-        run: |
-          mkdir -p ~/.config/rclone
-          # Remove possíveis espaços ou caracteres invisíveis que quebram o JSON
-          echo "${{ secrets.RCLONE_CONFIG }}" | tr -d '\r' > ~/.config/rclone/rclone.conf
+#       - name: Preparar Configurações
+#         run: |
+#           mkdir -p ~/.config/rclone
+#           # Remove possíveis espaços ou caracteres invisíveis que quebram o JSON
+#           echo "${{ secrets.RCLONE_CONFIG }}" | tr -d '\r' > ~/.config/rclone/rclone.conf
           
-          touch $HOME/yt-cookies.txt
-          if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
-            echo "${{ secrets.YOUTUBE_COOKIES }}" | tr -d '\r' > $HOME/yt-cookies.txt
-          fi
+#           touch $HOME/yt-cookies.txt
+#           if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
+#             echo "${{ secrets.YOUTUBE_COOKIES }}" | tr -d '\r' > $HOME/yt-cookies.txt
+#           fi
 
-      - name: Rodar Script
-        run: |
-          # Limpa caracteres invisíveis de quebra de linha (CRLF do Windows) do script
-          sed -i 's/\r$//' ./script.sh
-          chmod +x ./script.sh
-          ./script.sh
+#       - name: Rodar Script
+#         run: |
+#           # Limpa caracteres invisíveis de quebra de linha (CRLF do Windows) do script
+#           sed -i 's/\r$//' ./script.sh
+#           chmod +x ./script.sh
+#           ./script.sh

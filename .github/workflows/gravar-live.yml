@@ -23,15 +23,11 @@ jobs:
       - name: Instalar Dependências
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3 curl
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+          sudo apt-get install -y ffmpeg python3 curl nodejs
+          # Baixando a versão Nightly do yt-dlp (com as correções mais recentes anti-bloqueio)
+          sudo curl -L https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           curl https://rclone.org/install.sh | sudo bash
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
 
       - name: Preparar Configurações
         run: |
@@ -46,7 +42,7 @@ jobs:
 
       - name: Rodar Script
         run: |
+          # Limpa caracteres invisíveis de quebra de linha (CRLF do Windows) do script
+          sed -i 's/\r$//' ./script.sh
           chmod +x ./script.sh
-          # Garante que o Deno está no PATH para o script
-          export PATH=$PATH:$(which deno)
           ./script.sh

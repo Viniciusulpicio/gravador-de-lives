@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# --- CONFIGURAÇÕES (Preencha aqui) ---
-
-URL_ALVO="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"REMOTE_NAME="MeuDrive" # Nome do remote configurado no rclone
-DRIVE_FOLDER="ID_DA_PASTA_AQUI" # Se preferir usar o ID da pasta (opcional, veja explicação abaixo)
+# --- CONFIGURAÇÕES ---
+URL_ALVO="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"
+REMOTE_NAME="MeuDrive"
+DRIVE_FOLDER="1vQiWhlXTo9sJuEtCjwfUqwoV_K2Gh3Yl"
 TMP_DIR="/tmp/gravacao"
-LOG_FILE="$TMP_DIR/gravacao.log"
 
 mkdir -p "$TMP_DIR"
 echo ">>> [$(date)] Iniciando Monitoramento Blindado" | tee -a "$LOG_FILE"

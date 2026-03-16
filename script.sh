@@ -16,12 +16,13 @@ while true; do
     echo ">>> [$(date)] Verificando a live no canal: $URL_ALVO" | tee -a "$LOG_FILE"
 
     yt-dlp \
-        --cookies "$HOME/yt-cookies.txt" \
-        --live-from-start \
-        -f "bestvideo+bestaudio/best" \
-        --merge-output-format mkv \
-        -o "$TMP_DIR/%(upload_date)s_%(title)s.%(ext)s" \
-        "$URL_ALVO" 2>&1 | tee -a "$LOG_FILE"
+            --cookies "$HOME/yt-cookies.txt" \
+            --extractor-args "youtube:player-client=ios,web" \
+            --live-from-start \
+            -f "bestvideo+bestaudio/best" \
+            --merge-output-format mkv \
+            -o "$TMP_DIR/%(upload_date)s_%(title)s.%(ext)s" \
+            "$URL_ALVO" 2>&1 | tee -a "$LOG_FILE"
 
     echo ">>> [$(date)] Gravação finalizada ou live offline. Verificando arquivos..." | tee -a "$LOG_FILE"
 

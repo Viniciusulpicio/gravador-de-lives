@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # --- CONFIGURAÇÕES (Preencha aqui) ---
-URL_ALVO="https://www.youtube.com/@NOME_DO_CANAL/live"
-REMOTE_NAME="MeuDrive" # Nome do remote configurado no rclone
+
+URL_ALVO="${URL_DO_CANAL:-https://www.youtube.com/@republicacoisadenerd/live}"REMOTE_NAME="MeuDrive" # Nome do remote configurado no rclone
 DRIVE_FOLDER="ID_DA_PASTA_AQUI" # Se preferir usar o ID da pasta (opcional, veja explicação abaixo)
 TMP_DIR="/tmp/gravacao"
 LOG_FILE="$TMP_DIR/gravacao.log"
@@ -18,9 +18,9 @@ while true; do
     # O yt-dlp possui a flag --wait-for-video que faz o polling de forma muito mais segura que o curl.
     # Removi o Deno e o cliente TV para evitar quebra de dependências e bloqueios 403.
     # Mantive a autenticação OAuth2 (muito superior aos cookies para evitar banimento de IP em VPS).
-    
+        
     yt-dlp \
-        --username oauth2 --password '' \
+        --cookies "$HOME/yt-cookies.txt" \
         --live-from-start \
         --wait-for-video 300 \
         -f "bestvideo+bestaudio/best" \
